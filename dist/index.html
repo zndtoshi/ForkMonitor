@@ -98,7 +98,6 @@
     .hash { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b9d3c5; }
     .status { text-align: right; font-weight: 700; }
     .status.split { color: var(--red); } .status.same { color: var(--green); }
-    footer { color: var(--muted); font-size: .8rem; margin: 16px 2px 0; display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
     @media (max-width: 1050px) { .stats { grid-template-columns: repeat(3,1fr); } .lower { grid-template-columns: 1fr; } }
     @media (max-width: 650px) { .shell { padding: 16px; } header { display: block; } .live { margin-top: 14px; } .stats { grid-template-columns: repeat(2,1fr); } .card:last-child { grid-column: 1 / -1; } #chain.history-mode #chain-canvas { width: 100%; } .history-exit { display: none !important; } .event { grid-template-columns: 70px 1fr; } .event .status { grid-column: 2; text-align: left; } }
   </style>
@@ -149,7 +148,6 @@
       </article>
     </section>
 
-    <footer><span>Historical snapshot only · peer connections and block downloads are disabled.</span><span id="updated">Loading capture time…</span></footer>
   </main>
 
   <script>
@@ -262,6 +260,24 @@
       return `<path d="M ${fromX} ${fromY} C ${middleX} ${fromY}, ${middleX} ${toY}, ${toX} ${toY}" fill="none" stroke="#426657" stroke-width="3"/>`;
     }
 
+    function frozenSnapshotCard(data, x, y) {
+      const tip = data.counts?.max_height || "—";
+      const capturedAt = data.archive?.captured_at || data.updated_at;
+      const captured = capturedAt
+        ? new Date(capturedAt * 1000).toLocaleDateString([], {year: "numeric", month: "short", day: "numeric"})
+        : "Historical capture";
+      return `<g transform="translate(${x} ${y-39})" aria-label="Frozen historical snapshot at block ${tip}">
+        <rect width="190" height="78" rx="14" fill="#10292e" stroke="#8ed8f5" stroke-opacity=".62" stroke-width="1.5"/>
+        <path d="M8 25 L25 8 M158 70 L181 47 M167 8 L181 22" fill="none" stroke="#c8f1ff" stroke-opacity=".13"/>
+        <circle cx="27" cy="39" r="17" fill="#5cb6d9" fill-opacity=".11" stroke="#a6e4fa" stroke-opacity=".24"/>
+        <text x="27" y="46" text-anchor="middle" fill="#c9f2ff" font-size="21">❄</text>
+        <text x="53" y="24" fill="#dff7ff" font-size="11.5" font-weight="800" letter-spacing=".7">FROZEN SNAPSHOT</text>
+        <text x="53" y="43" fill="#add7e3" font-size="11">Block #${tip} · ${captured}</text>
+        <text x="53" y="60" fill="#82aab5" font-size="10.5">Read-only · no live updates</text>
+        <title>Immutable historical capture. Peer connections, block downloads, and live chain updates are disabled.</title>
+      </g>`;
+    }
+
     function bestBranchPath(first, children) {
       const visit = (block, seen) => {
         if (seen.has(block.hash)) return [block];
@@ -313,7 +329,7 @@
             || b.length - a.length;
         })
         .slice(0, 2);
-      const width = 1180, height = 360;
+      const width = 1280, height = 360;
       const commonX = 190, commonY = height / 2;
       const blockStep = 200;
       const firstX = commonX + blockStep;
@@ -323,6 +339,7 @@
       const shortestTipHeight = Math.min(...tipHeights);
       const omittedCounts = branchPaths.map(path => Math.max(0, path.length - 3));
       const fewestOmitted = Math.min(...omittedCounts);
+      let rightmostTipX = firstX;
       let drawing = `
         <g aria-label="Earlier common-chain blocks">
           <circle cx="134" cy="${commonY}" r="3.5" fill="#6f9181"/>
@@ -337,6 +354,7 @@
         const leadOffset = Math.min(90, leadBlocks * 22);
         const latestPreviousX = baseLatestPreviousX + leadOffset;
         const latestX = baseLatestX + leadOffset;
+        let pathTipX = firstX;
         drawing += chainLink(commonX + 92, commonY, firstX, y);
         drawing += blockNode(path[0], firstX, y);
         if (path.length > 3) {
@@ -355,6 +373,7 @@
           drawing += blockNode(path.at(-2), latestPreviousX, y);
           drawing += chainLink(latestPreviousX + 92, y, latestX, y);
           drawing += blockNode(path.at(-1), latestX, y);
+          pathTipX = latestX;
         } else if (path.length === 3) {
           const secondX = firstX + blockStep;
           const thirdX = secondX + blockStep;
@@ -362,22 +381,17 @@
           drawing += blockNode(path[1], secondX, y);
           drawing += chainLink(secondX + 92, y, thirdX, y);
           drawing += blockNode(path[2], thirdX, y);
+          pathTipX = thirdX;
         } else if (path.length === 2) {
           const secondX = firstX + blockStep;
           drawing += chainLink(firstX + 92, y, secondX, y);
           drawing += blockNode(path[1], secondX, y);
+          pathTipX = secondX;
         }
-        if (branchPaths.length > 1 && leadBlocks > 1) {
-          const badgeText = `${leadBlocks} blocks ahead`;
-          const badgeWidth = 108;
-          const badgeX = latestX + 100;
-          const badgeY = y - 13;
-          drawing += `<g aria-label="${badgeText}">
-            <rect x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="26" rx="13" fill="#123c2b" stroke="#47d695" stroke-width="1.5"/>
-            <text x="${badgeX + badgeWidth / 2}" y="${badgeY + 17}" text-anchor="middle" fill="#8affbe" font-size="11.5" font-weight="800">${badgeText}</text>
-          </g>`;
-        }
+        rightmostTipX = Math.max(rightmostTipX, pathTipX);
       });
+
+      drawing += frozenSnapshotCard(data, Math.min(width - 206, rightmostTipX + 118), commonY);
 
       $("chain-canvas").innerHTML = `<svg class="fork-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Two observed chains diverging upward and downward from their last common block">${drawing}</svg>`;
       $("chain-meta").textContent = `Latest split after #${fork.parent.height} · ${candidates.length} recorded split${candidates.length === 1 ? '' : 's'}`;
@@ -595,7 +609,8 @@
         return chainLink(x(parent) + 92, y(parent), x(block), y(block));
       }).join("");
       const nodes = visible.map(block => blockNode(block, x(block), y(block))).join("");
-      $("chain-canvas").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observed blockchain branches; ellipsis before the oldest visible block indicates earlier history">${history}${links}${nodes}</svg>`;
+      const frozen = frozenSnapshotCard(data, latestX + 118, height / 2);
+      $("chain-canvas").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observed blockchain branches; ellipsis before the oldest visible block indicates earlier history">${history}${links}${nodes}${frozen}</svg>`;
       $("chain-meta").textContent = `${visible.length} recent blocks · ${data.chain.tips.length} observed tip${data.chain.tips.length === 1 ? '' : 's'}`;
     }
 
@@ -670,11 +685,9 @@
           historyInitialized = true;
         } else renderChain(data);
         renderPeers(data); renderEvents(data);
-        const capturedAt = data.archive?.captured_at || data.updated_at;
-        $("updated").textContent = `Snapshot captured ${new Date(capturedAt * 1000).toLocaleString()}`;
       } catch (error) {
         $("live-label").textContent = "Snapshot unavailable";
-        $("updated").textContent = String(error);
+        $("chain-meta").textContent = String(error);
       }
     }
     loadSnapshot();
