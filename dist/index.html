@@ -48,13 +48,13 @@
     .value { font-size: clamp(1.25rem, 2.4vw, 1.8rem); line-height: 1; font-weight: 780; letter-spacing: -.03em; }
     .detail { display: block; color: var(--muted); font-size: .82rem; margin-top: 8px; }
     .value.good { color: var(--green); } .value.warn { color: var(--amber); } .value.bad { color: var(--red); }
-    .grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(310px, .8fr); gap: 16px; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(310px, .8fr); gap: 16px; align-items: start; }
     .panel { border-radius: 16px; overflow: hidden; }
     .panel-head { min-height: 58px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); gap: 16px; }
     .panel h2 { font-size: 1rem; margin: 0; letter-spacing: -.01em; }
     .panel-meta { color: var(--muted); font-size: .84rem; text-align: right; }
-    #chain { min-height: 390px; overflow: auto; padding: 14px; }
-    #chain svg { min-width: 760px; width: 100%; height: 360px; display: block; }
+    #chain { min-height: 270px; overflow: auto; padding: 14px; }
+    #chain svg { min-width: 680px; width: 100%; height: 260px; display: block; }
     .empty { min-height: 350px; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 30px; }
     .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 18px 16px; color: var(--muted); font-size: .82rem; }
     .key { display: inline-flex; align-items: center; gap: 7px; }
@@ -157,6 +157,11 @@
       if (seconds < 3600) return `${Math.floor(seconds/60)}m ago`;
       return `${Math.floor(seconds/3600)}h ago`;
     };
+    const minedMinutesAgo = (unix) => {
+      const minutes = Math.max(0, Math.floor((Date.now()/1000 - unix) / 60));
+      if (minutes < 1) return "mined <1 min ago";
+      return `mined ${minutes} min${minutes === 1 ? "" : "s"} ago`;
+    };
 
     function blockColor(block) {
       if (block.legacy_maturity_ok && !block.long_maturity_ok) return "#ffca57";
@@ -175,7 +180,7 @@
       });
       const minHeight = Math.min(...blocks.map(block => block.height));
       const maxHeight = Math.max(...blocks.map(block => block.height));
-      const visibleMin = Math.max(minHeight, maxHeight - 18);
+      const visibleMin = Math.max(minHeight, maxHeight - 3);
       const visible = blocks.filter(block => block.height >= visibleMin);
       const rows = new Map();
       visible.sort((a,b) => a.height - b.height || a.hash.localeCompare(b.hash));
@@ -187,22 +192,23 @@
         if (siblings.length > 1 && siblings[0].hash !== block.hash) row = ++nextRow;
         rows.set(block.hash, row);
       });
-      const width = Math.max(820, (maxHeight - visibleMin + 1) * 72 + 120);
-      const height = Math.max(330, (nextRow + 1) * 88 + 90);
-      const x = block => 58 + (block.height - visibleMin) * 72;
-      const y = block => 62 + (rows.get(block.hash) || 0) * 88;
+      const width = Math.max(680, (maxHeight - visibleMin + 1) * 150 + 110);
+      const height = Math.max(250, (nextRow + 1) * 112 + 110);
+      const x = block => 70 + (block.height - visibleMin) * 150;
+      const y = block => 72 + (rows.get(block.hash) || 0) * 112;
       const links = visible.map(block => {
         const parent = byHash.get(block.prev_hash);
         if (!parent || parent.height < visibleMin) return "";
-        return `<path d="M ${x(parent)+32} ${y(parent)} C ${x(parent)+48} ${y(parent)}, ${x(block)-18} ${y(block)}, ${x(block)} ${y(block)}" fill="none" stroke="#426657" stroke-width="3"/>`;
+        return `<path d="M ${x(parent)+86} ${y(parent)} C ${x(parent)+112} ${y(parent)}, ${x(block)-26} ${y(block)}, ${x(block)} ${y(block)}" fill="none" stroke="#426657" stroke-width="3"/>`;
       }).join("");
       const nodes = visible.map(block => {
         const color = blockColor(block);
         const isSplit = block.legacy_maturity_ok !== block.long_maturity_ok;
-        return `<g transform="translate(${x(block)} ${y(block)-22})">
-          <rect width="54" height="44" rx="8" fill="${color}" opacity=".96" stroke="${isSplit ? '#fff1c8' : '#0a1712'}" stroke-width="${isSplit ? 3 : 2}"/>
-          <text x="27" y="-8" text-anchor="middle" fill="#9db7aa" font-size="11">${block.height}</text>
-          <text x="27" y="27" text-anchor="middle" fill="#06110d" font-size="11" font-weight="800">${block.hash.slice(0,5)}</text>
+        return `<g transform="translate(${x(block)} ${y(block)-26})">
+          <rect width="86" height="52" rx="10" fill="${color}" opacity=".96" stroke="${isSplit ? '#fff1c8' : '#0a1712'}" stroke-width="${isSplit ? 3 : 2}"/>
+          <text x="43" y="-10" text-anchor="middle" fill="#9db7aa" font-size="12">${block.height}</text>
+          <text x="43" y="31" text-anchor="middle" fill="#06110d" font-size="13" font-weight="800">${block.hash.slice(0,7)}</text>
+          <text x="43" y="70" text-anchor="middle" fill="#9db7aa" font-size="11">${minedMinutesAgo(block.timestamp)}</text>
           <title>${block.height} · ${block.hash}\n${block.maturity_note || 'Both maturity checks agree'}</title>
         </g>`;
       }).join("");
