@@ -38,7 +38,8 @@
     h1 { font-size: clamp(1.55rem, 3vw, 2.35rem); line-height: 1.08; margin: 0 0 8px; letter-spacing: -.035em; }
     .subtitle { color: var(--muted); margin: 0; max-width: 760px; }
     .live { display: inline-flex; align-items: center; gap: 9px; color: var(--green); font-weight: 750; white-space: nowrap; }
-    .live-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 6px rgba(109,247,174,.11); animation: pulse 2s infinite; }
+    .live.archive { color: var(--amber); }
+    .live-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 6px rgba(255,202,87,.11); }
     @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(109,247,174,0); } }
     .stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0; margin-bottom: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: rgba(10,27,21,.82); box-shadow: 0 8px 24px rgba(0,0,0,.15); }
     .card, .panel { background: linear-gradient(180deg, rgba(17,39,31,.96), rgba(10,27,21,.96)); border: 1px solid var(--line); box-shadow: var(--shadow); }
@@ -107,15 +108,15 @@
     <header>
       <div>
         <h1>Knots Fork Observer</h1>
-        <p class="subtitle">A passive view of peer-announced BLAKE2b blocks under legacy and 45-day coinbase-maturity rules.</p>
+        <p class="subtitle">A frozen historical view of peer-announced BLAKE2b blocks under legacy and 45-day coinbase-maturity rules.</p>
       </div>
-      <div class="live"><span class="live-dot"></span><span id="live-label">Connecting</span></div>
+      <div class="live archive"><span class="live-dot"></span><span id="live-label">Historical snapshot</span></div>
     </header>
 
     <section class="stats" aria-label="Observer summary">
-      <article class="card"><span class="label">Observed tip</span><span class="value" id="tip">—</span><span class="detail" id="guide-tip">Guide tip —</span></article>
-      <article class="card"><span class="label">Connected peers</span><span class="value" id="peers">0</span><span class="detail">BLAKE2b-capable seed peers</span></article>
-      <article class="card"><span class="label">Raw blocks</span><span class="value" id="blocks">0</span><span class="detail" id="bytes">0 B stored</span></article>
+      <article class="card"><span class="label">Archived tip</span><span class="value" id="tip">—</span><span class="detail" id="guide-tip">Snapshot tip —</span></article>
+      <article class="card"><span class="label">Peers at snapshot</span><span class="value" id="peers">0</span><span class="detail">No live connections</span></article>
+      <article class="card"><span class="label">Archived blocks</span><span class="value" id="blocks">0</span><span class="detail" id="bytes">0 B captured</span></article>
       <article class="card"><span class="label">Observed branches</span><span class="value" id="branches">1</span><span class="detail">Competing descendants retained</span></article>
     </section>
 
@@ -127,11 +128,11 @@
           </div>
           <h2>Observed chain graph</h2>
         </div>
-        <span class="panel-meta" id="chain-meta">Waiting for blocks</span>
+        <span class="panel-meta" id="chain-meta">Loading archived blocks</span>
       </div>
       <div id="chain">
         <button class="graph-button history-entry" id="history-open" type="button">Whole history</button>
-        <div id="chain-canvas"><div class="empty">Connecting to peers and downloading post-activation blocks…</div></div>
+        <div id="chain-canvas"><div class="empty">Loading the frozen chain history…</div></div>
         <button class="graph-button history-exit" id="history-close-right" type="button" hidden>Back to present</button>
       </div>
       <div class="legend"><span class="key"><i class="swatch"></i>new rule · 6,480-block coinbase maturity</span><span class="key"><i class="swatch old"></i>legacy rule · 100-block coinbase maturity</span></div>
@@ -139,16 +140,16 @@
 
     <section class="lower">
       <article class="panel">
-        <div class="panel-head"><h2>Peer connections</h2><span class="panel-meta peer-summary" id="peer-meta">0 total</span></div>
-        <div class="peer-list" id="peer-list"><div class="empty" style="min-height:140px">Resolving BLAKE2b seed peers…</div></div>
+        <div class="panel-head"><h2>Peer snapshot</h2><span class="panel-meta peer-summary" id="peer-meta">0 captured</span></div>
+        <div class="peer-list" id="peer-list"><div class="empty" style="min-height:140px">Loading the archived peer list…</div></div>
       </article>
       <article class="panel">
-        <div class="panel-head"><h2>Recent raw blocks</h2><span class="panel-meta">Newest first</span></div>
-        <div class="events" id="events"><div class="empty" style="min-height:140px">No blocks stored yet.</div></div>
+        <div class="panel-head"><h2>Archived blocks</h2><span class="panel-meta">Newest first</span></div>
+        <div class="events" id="events"><div class="empty" style="min-height:140px">Loading archived blocks…</div></div>
       </article>
     </section>
 
-    <footer><span>Raw data stays on this observer's server.</span><span id="updated">Not updated yet</span></footer>
+    <footer><span>Historical snapshot only · peer connections and block downloads are disabled.</span><span id="updated">Loading capture time…</span></footer>
   </main>
 
   <script>
@@ -171,6 +172,10 @@
     const minedMinutesAgo = (unix) => {
       const minutes = Math.max(0, Math.floor((Date.now()/1000 - unix) / 60));
       if (minutes < 1) return "mined <1 min ago";
+      if (minutes >= 1440) {
+        const days = Math.max(1, Math.round(minutes / 1440));
+        return `mined ${days} day${days === 1 ? "" : "s"} ago`;
+      }
       if (minutes >= 60) {
         const hours = Math.max(1, Math.round(minutes / 60));
         return `mined ${hours} hour${hours === 1 ? "" : "s"} ago`;
@@ -597,16 +602,16 @@
     function renderPeers(data) {
       const peers = data.peers || [];
       $("peer-meta").innerHTML = `
-        <span>${data.counts.connected_peers} total</span>
+        <span>${data.counts.connected_peers} captured</span>
         <span class="rule-count"><i class="peer-rule new"></i>${data.counts.new_rule_peers || 0} new</span>
         <span class="rule-count"><i class="peer-rule legacy"></i>${data.counts.legacy_rule_peers || 0} legacy</span>`;
       $("peer-list").innerHTML = peers.length ? peers.map(peer => `
         <div class="peer">
-          <i class="peer-state ${peer.connected ? 'on' : ''}"></i>
+          <i class="peer-state" title="Historical peer"></i>
           <span class="peer-address" title="${peer.address}">${peer.address}</span>
           <span class="peer-version">
             <i class="peer-rule ${peer.rule_set || 'unknown'}"></i>
-            <span class="peer-agent" title="${peer.user_agent || peer.last_error || ''}">${peer.user_agent || (peer.connected ? 'handshaking' : 'offline')}</span>
+            <span class="peer-agent" title="${peer.user_agent || ''}">${peer.user_agent || 'version unknown'}</span>
           </span>
         </div>`).join("") : `<div class="empty" style="min-height:140px">No peers discovered yet.</div>`;
     }
@@ -642,18 +647,18 @@
     $("history-close").addEventListener("click", closeHistory);
     $("history-close-right").addEventListener("click", closeHistory);
 
-    async function refresh() {
+    async function loadSnapshot() {
       try {
-        const response = await fetch('/api/status', {cache:'no-store'});
+        const response = await fetch('/snapshot.json');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         annotateBranchValidity(data.chain.blocks || []);
-        $("live-label").textContent = data.counts.connected_peers ? "Observing peers" : "Waiting for peers";
+        $("live-label").textContent = "Historical snapshot";
         $("tip").textContent = data.counts.max_height || "—";
-        $("guide-tip").textContent = `mempool.guide ${data.observer.guide_tip || '—'}`;
+        $("guide-tip").textContent = `Snapshot tip ${data.observer.guide_tip || '—'}`;
         $("peers").textContent = data.counts.connected_peers;
         $("blocks").textContent = data.counts.blocks;
-        $("bytes").textContent = `${bytes(data.counts.bytes)} stored`;
+        $("bytes").textContent = `${bytes(data.counts.bytes)} captured`;
         const branchCount = Math.max(1, data.chain.tips.length || 0);
         $("branches").textContent = branchCount;
         latestData = data;
@@ -665,14 +670,14 @@
           historyInitialized = true;
         } else renderChain(data);
         renderPeers(data); renderEvents(data);
-        $("updated").textContent = `Updated ${timeAgo(data.updated_at)}`;
+        const capturedAt = data.archive?.captured_at || data.updated_at;
+        $("updated").textContent = `Snapshot captured ${new Date(capturedAt * 1000).toLocaleString()}`;
       } catch (error) {
-        $("live-label").textContent = "Observer unavailable";
+        $("live-label").textContent = "Snapshot unavailable";
         $("updated").textContent = String(error);
       }
     }
-    refresh();
-    setInterval(refresh, 3000);
+    loadSnapshot();
   </script>
 </body>
 </html>

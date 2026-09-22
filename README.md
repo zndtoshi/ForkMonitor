@@ -1,49 +1,42 @@
-# Knots Fork Observer
+# Knots Fork Observer — Historical Snapshot
 
-Local passive observer for the BLAKE2b Bitcoin peer network. It stores raw peer blocks without consensus validation and compares only the legacy 100-block coinbase maturity with Knots' temporary 6,480-block maturity rule.
+Frozen public archive of the BLAKE2b Bitcoin Knots fork observation captured on
+2026-09-22 at 18:24:47 Gulf Standard Time.
 
-Dashboard: <http://127.0.0.1:8787>
-
-Public deployment: <https://lukecoin.zndtoshi.com>
+Dashboard: <https://lukecoin.zndtoshi.com>
 
 Source repository: <https://github.com/zndtoshi/ForkMonitor>
 
-Persistent state and raw blocks are stored under `~/.local/state/knots-fork-observer/`.
+The archive contains 201 observed blocks from heights 973,440 through 973,630,
+including eight recorded branch points, nine maturity-rule disagreements, miner
+labels, and the 62-peer software-version snapshot visible at capture time. The
+interactive whole-history view remains zoomable and pannable.
 
-The observer does **not** determine which chain is Bitcoin, validate proof of work, execute scripts, verify merkle roots, or select a winning chain. It retains peer-observed competing descendants so both branches can be displayed.
+## Network activity
+
+There is none. This version is a Render static site:
+
+- no peer connections;
+- no DNS-seed discovery;
+- no block downloads;
+- no mempool.guide polling;
+- no server process, database, or persistent disk;
+- no periodic browser polling.
+
+The immutable production data is stored in `dist/snapshot.json`. The browser
+loads it once and performs all chart rendering locally.
+
+The small `Dockerfile` is an archive-only migration fallback for the existing
+Render service. It can only serve the files in `dist/`; it contains no observer
+code and opens no peer connections. The final Blueprint uses static hosting and
+does not run the container.
 
 ## Render deployment
 
-The included `render.yaml` deploys a Docker web service in Render's Singapore region with a 10 GB persistent disk. Render supplies `PORT`; the container listens on `0.0.0.0` and stores its database, log, and raw blocks beneath `/var/data/knots-fork-observer`.
+`render.yaml` defines a static site that publishes `dist/`. Future commits can
+redeploy the archived interface, but the chain data will not change unless
+`dist/snapshot.json` is deliberately replaced.
 
-1. Push this directory to a GitHub repository.
-2. In Render, choose **New → Blueprint** and connect that repository.
-3. Review the proposed `knots-fork-observer` Starter service and persistent disk, then apply it.
-4. Wait for `/api/health` to pass and open the generated `onrender.com` URL.
-5. Under the service's **Settings → Custom Domains**, add `lukecoin.zndtoshi.com`.
-6. Add the DNS record Render displays at the DNS provider for `zndtoshi.com`; normally this is a `CNAME` for host `lukecoin` pointing to the generated Render hostname.
-
-Do not deploy this without its persistent disk: Render instances have an ephemeral root filesystem and a restart would otherwise discard the block archive and SQLite database.
-
-The production deployment uses Render service `knots-fork-observer` in Singapore on the Starter plan with a 10 GB persistent disk. Namecheap DNS points the `lukecoin` CNAME to `knots-fork-observer.onrender.com`. Render manages the HTTPS certificate.
-
-Supported environment variables:
-
-- `PORT`: HTTP port supplied by Render.
-- `OBSERVER_HOST`: bind address; the image defaults to `0.0.0.0`.
-- `OBSERVER_STATE_DIR`: persistent data directory.
-- `OBSERVER_MAX_PEERS`: maximum peer connections, default `8`; the Render blueprint sets `256`.
-
-After handshaking, every connected peer is asked for its known addresses. Public
-addresses advertising the BLAKE2b service bit are connected recursively until
-the configured cap is reached. Private, loopback, reserved, and non-BLAKE2b
-addresses are ignored. DNS-seed candidates whose actual version handshake does
-not advertise `NODE_BLAKE2B` are immediately disconnected and do not count as
-online. Persisted peer rows are marked offline on every process start so the
-dashboard never carries stale "online" counts across deployments. The public
-API and dashboard list only currently connected peers; offline peers remain
-internal so the observer can retry them without cluttering the interface.
-Peer rule adoption is classified from the complete advertised version: Knots
-29.4.2 and newer are shown as the new 6,480-block rule, while Knots 29.4.1 and
-older (and non-Knots software) are shown as the legacy 100-block rule. Peers
-whose advertised Knots version cannot be parsed are shown as unknown.
+This archive does **not** determine which chain is Bitcoin, validate proof of
+work, execute scripts, verify merkle roots, or select a winning chain. It shows
+the peer-observed history retained by the former passive observer.
