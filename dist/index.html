@@ -293,7 +293,11 @@
           const dots = Array.from({length: dotCount}, (_, dotIndex) =>
             `<circle cx="${firstDotX + dotIndex * 14}" cy="${y}" r="3.5" fill="#6f9181"/>`).join("");
           const afterDotsX = firstDotX + (dotCount - 1) * 14 + 25;
+          const dotsCenterX = (firstDotX + firstDotX + (dotCount - 1) * 14) / 2;
+          const quietCount = omittedCounts[index];
           drawing += `<path d="M ${firstX+92} ${y} L 530 ${y}" fill="none" stroke="#426657" stroke-width="3"/>
+            <rect x="${dotsCenterX-45}" y="${y-32}" width="90" height="20" rx="10" fill="#0b1d16" stroke="#244437"/>
+            <text x="${dotsCenterX}" y="${y-18}" text-anchor="middle" fill="#9db7aa" font-size="10.5">${quietCount} quiet block${quietCount === 1 ? '' : 's'}</text>
             ${dots}
             <path d="M ${afterDotsX} ${y} L ${latestPreviousX} ${y}" fill="none" stroke="#426657" stroke-width="3"/>`;
           drawing += blockNode(path.at(-2), latestPreviousX, y);
