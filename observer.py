@@ -10,6 +10,7 @@ parses enough structure to link a block to its parent and compare the legacy
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
 import queue
@@ -53,6 +54,7 @@ ACTIVATION_HEIGHT = 973_440
 RELEASE_HEIGHT = 979_920
 LEGACY_MATURITY = 100
 LONG_MATURITY = RELEASE_HEIGHT - ACTIVATION_HEIGHT
+NEW_RULE_KNOTS_RELEASE = 20260508
 MAX_PEERS = int(os.environ.get("OBSERVER_MAX_PEERS", "8"))
 
 SEEDS = (
@@ -64,6 +66,8 @@ stop_event = threading.Event()
 download_queue: queue.Queue[tuple[str, int | None, str]] = queue.Queue()
 queued_hashes: set[str] = set()
 queue_lock = threading.Lock()
+peer_workers_lock = threading.Lock()
+peer_workers: dict[str, "PeerWorker"] = {}
 
 
 def log(message: str) -> None:
@@ -207,6 +211,37 @@ def parse_version(payload: bytes) -> tuple[int, str, int]:
     offset += user_length
     start_height = struct.unpack_from("<i", payload, offset)[0] if offset + 4 <= len(payload) else 0
     return services, user_agent, start_height
+
+
+def parse_addr(payload: bytes) -> list[tuple[str, int, int]]:
+    """Parse public IP peers from the legacy P2P addr message."""
+    count, offset = read_compact(payload, 0)
+    if count > 1000:
+        raise ValueError(f"oversized addr message: {count} entries")
+    addresses: list[tuple[str, int, int]] = []
+    for _ in range(count):
+        if offset + 30 > len(payload):
+            break
+        services = struct.unpack_from("<Q", payload, offset + 4)[0]
+        raw_ip = payload[offset + 12 : offset + 28]
+        port = struct.unpack_from(">H", payload, offset + 28)[0]
+        offset += 30
+        parsed_ip = ipaddress.ip_address(raw_ip)
+        if isinstance(parsed_ip, ipaddress.IPv6Address) and parsed_ip.ipv4_mapped:
+            parsed_ip = parsed_ip.ipv4_mapped
+        if parsed_ip.is_global and 0 < port < 65536:
+            addresses.append((str(parsed_ip), port, services))
+    return addresses
+
+
+def peer_rule_set(user_agent: str | None) -> str:
+    """Classify a peer by the release it advertises in its version message."""
+    if not user_agent:
+        return "unknown"
+    release = re.search(r"/Knots:(\d{8})", user_agent)
+    if release and int(release.group(1)) >= NEW_RULE_KNOTS_RELEASE:
+        return "new"
+    return "legacy"
 
 
 def recv_exact(sock: socket.socket, amount: int) -> bytes:
@@ -545,10 +580,11 @@ def request_block(sock: socket.socket, block_hash: str) -> None:
 
 
 class PeerWorker(threading.Thread):
-    def __init__(self, ip: str):
-        super().__init__(name=f"peer-{ip}", daemon=True)
+    def __init__(self, ip: str, port: int = P2P_PORT):
+        super().__init__(name=f"peer-{ip}-{port}", daemon=True)
         self.ip = ip
-        self.address = f"{ip}:{P2P_PORT}"
+        self.port = port
+        self.address = f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
 
     def next_request(self) -> tuple[str, int | None, str] | None:
         try:
@@ -576,7 +612,7 @@ class PeerWorker(threading.Thread):
 
     def session(self) -> None:
         pending: tuple[str, int | None, str] | None = None
-        with socket.create_connection((self.ip, P2P_PORT), timeout=8) as sock:
+        with socket.create_connection((self.ip, self.port), timeout=8) as sock:
             sock.settimeout(2)
             sock.sendall(make_message("version", version_payload()))
             handshaken = False
@@ -607,6 +643,10 @@ class PeerWorker(threading.Thread):
                     sock.sendall(make_message("getaddr"))
                 elif command == "ping":
                     sock.sendall(make_message("pong", payload))
+                elif command == "addr":
+                    added = sum(1 for ip, port, services in parse_addr(payload) if start_peer(ip, port, services))
+                    if added:
+                        log(f"learned {added} additional BLAKE2b peers from {self.address}")
                 elif command == "inv":
                     for kind, announced_hash in parse_inv(payload):
                         if kind & 0x3FFFFFFF != MSG_BLOCK:
@@ -625,6 +665,26 @@ class PeerWorker(threading.Thread):
                         queued_hashes.discard(pending[0])
                     download_queue.task_done()
                     pending = None
+
+
+def start_peer(ip: str, port: int = P2P_PORT, services: int = 0) -> bool:
+    """Start one unique public BLAKE2b peer, up to the configured cap."""
+    try:
+        parsed_ip = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if not parsed_ip.is_global or not 0 < port < 65536:
+        return False
+    if services and not services & NODE_BLAKE2B:
+        return False
+    address = f"[{parsed_ip}]:{port}" if parsed_ip.version == 6 else f"{parsed_ip}:{port}"
+    with peer_workers_lock:
+        if address in peer_workers or len(peer_workers) >= MAX_PEERS:
+            return False
+        worker = PeerWorker(str(parsed_ip), port)
+        peer_workers[address] = worker
+        worker.start()
+    return True
 
 
 def fetch_text(url: str, timeout: int = 10) -> str:
@@ -717,6 +777,9 @@ def status_payload() -> dict[str, Any]:
         meta = {row["key"]: row["value"] for row in connection.execute("SELECT key, value FROM meta")}
         branches = branch_data(connection)
     peers = [dict(row) for row in peer_rows]
+    for peer in peers:
+        peer["rule_set"] = peer_rule_set(peer.get("user_agent"))
+    connected_peers = [peer for peer in peers if peer["connected"]]
     return {
         "observer": {
             "mode": "passive-unvalidated",
@@ -734,7 +797,9 @@ def status_payload() -> dict[str, Any]:
             "max_height": int(counts["max_height"] or 0),
             "rule_splits": int(counts["rule_splits"] or 0),
             "announcements": int(announcements or 0),
-            "connected_peers": sum(1 for peer in peers if peer["connected"]),
+            "connected_peers": len(connected_peers),
+            "new_rule_peers": sum(1 for peer in connected_peers if peer["rule_set"] == "new"),
+            "legacy_rule_peers": sum(1 for peer in connected_peers if peer["rule_set"] == "legacy"),
         },
         "peers": peers,
         "chain": branches,
@@ -777,10 +842,10 @@ def main() -> None:
     init_db()
     backfill_miner_tags()
     peers = discover_peers()
-    log(f"starting passive observer with {len(peers)} peer candidates")
+    log(f"starting passive observer with {len(peers)} DNS peer candidates and a {MAX_PEERS}-peer discovery cap")
     threading.Thread(target=bootstrap_backfill, name="backfill", daemon=True).start()
     for address in peers:
-        PeerWorker(address).start()
+        start_peer(address)
     server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), DashboardHandler)
     log(f"dashboard listening on http://{LISTEN_HOST}:{LISTEN_PORT}")
     try:

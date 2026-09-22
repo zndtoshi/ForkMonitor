@@ -32,4 +32,9 @@ Supported environment variables:
 - `PORT`: HTTP port supplied by Render.
 - `OBSERVER_HOST`: bind address; the image defaults to `0.0.0.0`.
 - `OBSERVER_STATE_DIR`: persistent data directory.
-- `OBSERVER_MAX_PEERS`: maximum peer connections, default `8`.
+- `OBSERVER_MAX_PEERS`: maximum peer connections, default `8`; the Render blueprint sets `256`.
+
+After handshaking, every connected peer is asked for its known addresses. Public
+addresses advertising the BLAKE2b service bit are connected recursively until
+the configured cap is reached. Private, loopback, reserved, and non-BLAKE2b
+addresses are ignored.
