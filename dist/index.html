@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Passive observer for Bitcoin Knots maturity-rule forks">
+  <title>Knots Fork Observer</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M8 32h19m0 0 12-14h17M27 32l12 14h17' fill='none' stroke='%236df7ae' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07110e;
+      --surface: #0d1c17;
+      --surface-2: #11271f;
+      --line: #244437;
+      --text: #edf9f2;
+      --muted: #9db7aa;
+      --green: #6df7ae;
+      --green-soft: #2fc27d;
+      --amber: #ffca57;
+      --red: #ff6f61;
+      --blue: #62a9ff;
+      --shadow: 0 18px 60px rgba(0,0,0,.28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 85% -10%, rgba(47,194,125,.16), transparent 32rem),
+        linear-gradient(180deg, #081611, var(--bg));
+      color: var(--text);
+      font: 16px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button { font: inherit; }
+    .shell { max-width: 1480px; margin: 0 auto; padding: 24px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 20px; }
+    h1 { font-size: clamp(1.55rem, 3vw, 2.35rem); line-height: 1.08; margin: 0 0 8px; letter-spacing: -.035em; }
+    .subtitle { color: var(--muted); margin: 0; max-width: 760px; }
+    .live { display: inline-flex; align-items: center; gap: 9px; color: var(--green); font-weight: 750; white-space: nowrap; }
+    .live-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 6px rgba(109,247,174,.11); animation: pulse 2s infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(109,247,174,0); } }
+    .notice { border: 1px solid rgba(255,202,87,.35); background: rgba(255,202,87,.08); color: #ffe2a1; border-radius: 12px; padding: 12px 14px; margin-bottom: 18px; }
+    .stats { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+    .card, .panel { background: linear-gradient(180deg, rgba(17,39,31,.96), rgba(10,27,21,.96)); border: 1px solid var(--line); box-shadow: var(--shadow); }
+    .card { border-radius: 14px; padding: 16px; min-height: 102px; }
+    .label { display: block; color: var(--muted); font-size: .82rem; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 7px; }
+    .value { font-size: clamp(1.25rem, 2.4vw, 1.8rem); line-height: 1; font-weight: 780; letter-spacing: -.03em; }
+    .detail { display: block; color: var(--muted); font-size: .82rem; margin-top: 8px; }
+    .value.good { color: var(--green); } .value.warn { color: var(--amber); } .value.bad { color: var(--red); }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(310px, .8fr); gap: 16px; }
+    .panel { border-radius: 16px; overflow: hidden; }
+    .panel-head { min-height: 58px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); gap: 16px; }
+    .panel h2 { font-size: 1rem; margin: 0; letter-spacing: -.01em; }
+    .panel-meta { color: var(--muted); font-size: .84rem; text-align: right; }
+    #chain { min-height: 390px; overflow: auto; padding: 14px; }
+    #chain svg { min-width: 760px; width: 100%; height: 360px; display: block; }
+    .empty { min-height: 350px; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 30px; }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 18px 16px; color: var(--muted); font-size: .82rem; }
+    .key { display: inline-flex; align-items: center; gap: 7px; }
+    .swatch { width: 11px; height: 11px; border-radius: 3px; background: var(--green-soft); }
+    .swatch.old { background: var(--amber); } .swatch.new { background: var(--red); }
+    .rule-list, .peer-list { padding: 4px 18px 16px; }
+    .rule { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: start; padding: 13px 0; border-bottom: 1px solid rgba(36,68,55,.75); }
+    .rule:last-child { border-bottom: 0; }
+    .rule-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 7px; }
+    .rule strong { display: block; } .rule small { color: var(--muted); font-size: .82rem; }
+    .badge { border-radius: 999px; padding: 4px 8px; font-size: .72rem; font-weight: 750; background: rgba(109,247,174,.12); color: var(--green); }
+    .peer { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid rgba(36,68,55,.65); }
+    .peer:last-child { border-bottom: 0; }
+    .peer-state { width: 8px; height: 8px; border-radius: 50%; background: #53665d; }
+    .peer-state.on { background: var(--green); box-shadow: 0 0 10px rgba(109,247,174,.6); }
+    .peer-address { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; overflow: hidden; text-overflow: ellipsis; }
+    .peer-agent { color: var(--muted); font-size: .75rem; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lower { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .events { padding: 8px 18px 18px; max-height: 290px; overflow: auto; }
+    .event { display: grid; grid-template-columns: 82px 1fr 110px; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(36,68,55,.65); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; }
+    .event:last-child { border-bottom: 0; }
+    .hash { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b9d3c5; }
+    .status { text-align: right; font-weight: 700; }
+    .status.split { color: var(--red); } .status.same { color: var(--green); }
+    footer { color: var(--muted); font-size: .8rem; margin: 16px 2px 0; display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+    @media (max-width: 1050px) { .stats { grid-template-columns: repeat(3,1fr); } .grid, .lower { grid-template-columns: 1fr; } }
+    @media (max-width: 650px) { .shell { padding: 16px; } header { display: block; } .live { margin-top: 14px; } .stats { grid-template-columns: repeat(2,1fr); } .card:last-child { grid-column: 1 / -1; } .event { grid-template-columns: 70px 1fr; } .event .status { grid-column: 2; text-align: left; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <h1>Knots Fork Observer</h1>
+        <p class="subtitle">A passive view of peer-announced BLAKE2b blocks under legacy and 45-day coinbase-maturity rules.</p>
+      </div>
+      <div class="live"><span class="live-dot"></span><span id="live-label">Connecting</span></div>
+    </header>
+
+    <div class="notice"><strong>Observer only.</strong> Raw blocks are stored without proof-of-work, script, merkle, or chain-selection validation. Rule labels below compare coinbase maturity only.</div>
+
+    <section class="stats" aria-label="Observer summary">
+      <article class="card"><span class="label">Observed tip</span><span class="value" id="tip">—</span><span class="detail" id="guide-tip">Guide tip —</span></article>
+      <article class="card"><span class="label">Connected peers</span><span class="value" id="peers">0</span><span class="detail">BLAKE2b-capable seed peers</span></article>
+      <article class="card"><span class="label">Raw blocks</span><span class="value" id="blocks">0</span><span class="detail" id="bytes">0 B stored</span></article>
+      <article class="card"><span class="label">Observed branches</span><span class="value" id="branches">1</span><span class="detail">Competing descendants retained</span></article>
+      <article class="card"><span class="label">Rule disagreements</span><span class="value good" id="splits">0</span><span class="detail">Legacy accepts / Knots rejects</span></article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-head"><h2>Observed chain graph</h2><span class="panel-meta" id="chain-meta">Waiting for blocks</span></div>
+        <div id="chain"><div class="empty">Connecting to peers and downloading post-activation blocks…</div></div>
+        <div class="legend"><span class="key"><i class="swatch"></i>accepted by both maturity checks</span><span class="key"><i class="swatch old"></i>legacy branch</span><span class="key"><i class="swatch new"></i>long-maturity rejection</span></div>
+      </article>
+
+      <aside class="panel">
+        <div class="panel-head"><h2>Rules being compared</h2></div>
+        <div class="rule-list">
+          <div class="rule"><i class="rule-dot" style="background:var(--amber)"></i><div><strong>Legacy maturity</strong><small>Coinbase spendable after 100 blocks.</small></div><span class="badge">old</span></div>
+          <div class="rule"><i class="rule-dot" style="background:var(--red)"></i><div><strong>Knots long maturity</strong><small>Post-973,440 coinbase requires 6,480 blocks through height 979,919.</small></div><span class="badge">new</span></div>
+        </div>
+        <div class="panel-head"><h2>Peer connections</h2><span class="panel-meta" id="peer-meta">0 online</span></div>
+        <div class="peer-list" id="peer-list"><div class="empty" style="min-height:140px">Resolving BLAKE2b seed peers…</div></div>
+      </aside>
+    </section>
+
+    <section class="lower">
+      <article class="panel">
+        <div class="panel-head"><h2>Recent raw blocks</h2><span class="panel-meta">Newest first</span></div>
+        <div class="events" id="events"><div class="empty" style="min-height:140px">No blocks stored yet.</div></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><h2>Fork trigger</h2></div>
+        <div class="rule-list">
+          <div class="rule"><i class="rule-dot" style="background:var(--green)"></i><div><strong>Activation</strong><small>Long-maturity enforcement began at block 973,440.</small></div><span class="badge">active</span></div>
+          <div class="rule"><i class="rule-dot" style="background:var(--amber)"></i><div><strong>First divergence opportunity</strong><small>Block 973,540 can first spend the activation coinbase under legacy rules.</small></div><span class="badge">watching</span></div>
+          <div class="rule"><i class="rule-dot" style="background:var(--red)"></i><div><strong>Split signal</strong><small>Two children of one parent, or a block legacy maturity accepts while long maturity rejects.</small></div><span class="badge">alert</span></div>
+        </div>
+      </article>
+    </section>
+
+    <footer><span>Raw data stays on this observer's server.</span><span id="updated">Not updated yet</span></footer>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const shortHash = (hash) => hash ? `${hash.slice(0, 7)}…${hash.slice(-5)}` : "—";
+    const bytes = (value) => {
+      if (!value) return "0 B";
+      const units = ["B", "KB", "MB", "GB"];
+      let index = 0, amount = value;
+      while (amount >= 1024 && index < units.length - 1) { amount /= 1024; index++; }
+      return `${amount.toFixed(index ? 1 : 0)} ${units[index]}`;
+    };
+    const timeAgo = (unix) => {
+      if (!unix) return "never";
+      const seconds = Math.max(0, Math.floor(Date.now()/1000 - unix));
+      if (seconds < 60) return `${seconds}s ago`;
+      if (seconds < 3600) return `${Math.floor(seconds/60)}m ago`;
+      return `${Math.floor(seconds/3600)}h ago`;
+    };
+
+    function blockColor(block) {
+      if (block.legacy_maturity_ok && !block.long_maturity_ok) return "#ffca57";
+      if (!block.long_maturity_ok) return "#ff6f61";
+      return "#2fc27d";
+    }
+
+    function renderChain(data) {
+      const blocks = data.chain.blocks || [];
+      if (!blocks.length) return;
+      const byHash = new Map(blocks.map(block => [block.hash, block]));
+      const children = new Map();
+      blocks.forEach(block => {
+        if (!children.has(block.prev_hash)) children.set(block.prev_hash, []);
+        children.get(block.prev_hash).push(block);
+      });
+      const minHeight = Math.min(...blocks.map(block => block.height));
+      const maxHeight = Math.max(...blocks.map(block => block.height));
+      const visibleMin = Math.max(minHeight, maxHeight - 18);
+      const visible = blocks.filter(block => block.height >= visibleMin);
+      const rows = new Map();
+      visible.sort((a,b) => a.height - b.height || a.hash.localeCompare(b.hash));
+      let nextRow = 0;
+      visible.forEach(block => {
+        const parentRow = rows.get(block.prev_hash);
+        const siblings = (children.get(block.prev_hash) || []).filter(item => item.height >= visibleMin);
+        let row = parentRow ?? 0;
+        if (siblings.length > 1 && siblings[0].hash !== block.hash) row = ++nextRow;
+        rows.set(block.hash, row);
+      });
+      const width = Math.max(820, (maxHeight - visibleMin + 1) * 72 + 120);
+      const height = Math.max(330, (nextRow + 1) * 88 + 90);
+      const x = block => 58 + (block.height - visibleMin) * 72;
+      const y = block => 62 + (rows.get(block.hash) || 0) * 88;
+      const links = visible.map(block => {
+        const parent = byHash.get(block.prev_hash);
+        if (!parent || parent.height < visibleMin) return "";
+        return `<path d="M ${x(parent)+32} ${y(parent)} C ${x(parent)+48} ${y(parent)}, ${x(block)-18} ${y(block)}, ${x(block)} ${y(block)}" fill="none" stroke="#426657" stroke-width="3"/>`;
+      }).join("");
+      const nodes = visible.map(block => {
+        const color = blockColor(block);
+        const isSplit = block.legacy_maturity_ok !== block.long_maturity_ok;
+        return `<g transform="translate(${x(block)} ${y(block)-22})">
+          <rect width="54" height="44" rx="8" fill="${color}" opacity=".96" stroke="${isSplit ? '#fff1c8' : '#0a1712'}" stroke-width="${isSplit ? 3 : 2}"/>
+          <text x="27" y="-8" text-anchor="middle" fill="#9db7aa" font-size="11">${block.height}</text>
+          <text x="27" y="27" text-anchor="middle" fill="#06110d" font-size="11" font-weight="800">${block.hash.slice(0,5)}</text>
+          <title>${block.height} · ${block.hash}\n${block.maturity_note || 'Both maturity checks agree'}</title>
+        </g>`;
+      }).join("");
+      $("chain").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observed blockchain branches">${links}${nodes}</svg>`;
+      $("chain-meta").textContent = `${visible.length} recent blocks · ${data.chain.tips.length} observed tip${data.chain.tips.length === 1 ? '' : 's'}`;
+    }
+
+    function renderPeers(data) {
+      const peers = data.peers || [];
+      $("peer-meta").textContent = `${data.counts.connected_peers} online`;
+      $("peer-list").innerHTML = peers.length ? peers.map(peer => `
+        <div class="peer">
+          <i class="peer-state ${peer.connected ? 'on' : ''}"></i>
+          <span class="peer-address" title="${peer.address}">${peer.address}</span>
+          <span class="peer-agent" title="${peer.user_agent || peer.last_error || ''}">${peer.user_agent || (peer.connected ? 'handshaking' : 'offline')}</span>
+        </div>`).join("") : `<div class="empty" style="min-height:140px">No peers discovered yet.</div>`;
+    }
+
+    function renderEvents(data) {
+      const blocks = (data.chain.blocks || []).slice(0, 30);
+      $("events").innerHTML = blocks.length ? blocks.map(block => {
+        const split = block.legacy_maturity_ok !== block.long_maturity_ok;
+        return `<div class="event"><span>#${block.height}</span><span class="hash" title="${block.hash}">${shortHash(block.hash)}</span><span class="status ${split ? 'split' : 'same'}">${split ? 'RULE SPLIT' : 'agree'}</span></div>`;
+      }).join("") : `<div class="empty" style="min-height:140px">No blocks stored yet.</div>`;
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch('/api/status', {cache:'no-store'});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        $("live-label").textContent = data.counts.connected_peers ? "Observing peers" : "Waiting for peers";
+        $("tip").textContent = data.counts.max_height || "—";
+        $("guide-tip").textContent = `mempool.guide ${data.observer.guide_tip || '—'}`;
+        $("peers").textContent = data.counts.connected_peers;
+        $("blocks").textContent = data.counts.blocks;
+        $("bytes").textContent = `${bytes(data.counts.bytes)} stored`;
+        const branchCount = Math.max(1, data.chain.tips.length || 0);
+        $("branches").textContent = branchCount;
+        $("splits").textContent = data.counts.rule_splits;
+        $("splits").className = `value ${data.counts.rule_splits ? 'bad' : 'good'}`;
+        renderChain(data); renderPeers(data); renderEvents(data);
+        $("updated").textContent = `Updated ${timeAgo(data.updated_at)}`;
+      } catch (error) {
+        $("live-label").textContent = "Observer unavailable";
+        $("updated").textContent = String(error);
+      }
+    }
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

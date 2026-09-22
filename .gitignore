@@ -1,0 +1,7 @@
+__pycache__/
+.openai/
+*.py[cod]
+.DS_Store
+observer.sqlite3*
+observer.log
+blocks/

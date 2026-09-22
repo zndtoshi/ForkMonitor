@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: knots-fork-observer
+    runtime: docker
+    region: singapore
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: OBSERVER_STATE_DIR
+        value: /var/data/knots-fork-observer
+      - key: OBSERVER_MAX_PEERS
+        value: "8"
+    disk:
+      name: observer-data
+      mountPath: /var/data
+      sizeGB: 10
