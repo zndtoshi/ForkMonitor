@@ -206,16 +206,46 @@
     let historyMode = new URLSearchParams(location.search).get("history") === "1";
     let historyInitialized = false;
     let historyTransform = {scale: 1, x: 0, y: 0};
+    let historyFocusY = 190;
+
+    function annotateBranchValidity(blocks) {
+      const byHash = new Map(blocks.map(block => [block.hash, block]));
+      const memo = new Map();
+      const resolve = (block, visiting = new Set()) => {
+        if (memo.has(block.hash)) return memo.get(block.hash);
+        if (visiting.has(block.hash)) {
+          return {legacy: Boolean(block.legacy_maturity_ok), long: Boolean(block.long_maturity_ok)};
+        }
+        const nextVisiting = new Set(visiting).add(block.hash);
+        const parent = byHash.get(block.prev_hash);
+        const parentValidity = parent ? resolve(parent, nextVisiting) : {legacy: true, long: true};
+        const validity = {
+          legacy: parentValidity.legacy && Boolean(block.legacy_maturity_ok),
+          long: parentValidity.long && Boolean(block.long_maturity_ok),
+        };
+        block.effective_legacy_maturity_ok = validity.legacy;
+        block.effective_long_maturity_ok = validity.long;
+        block.inherited_long_maturity_rejection = Boolean(block.long_maturity_ok) && !validity.long;
+        memo.set(block.hash, validity);
+        return validity;
+      };
+      blocks.forEach(block => resolve(block));
+    }
 
     function blockColor(block) {
-      if (block.legacy_maturity_ok && !block.long_maturity_ok) return "#ffca57";
-      if (!block.long_maturity_ok) return "#ff6f61";
+      const legacyOkay = block.effective_legacy_maturity_ok ?? Boolean(block.legacy_maturity_ok);
+      const longOkay = block.effective_long_maturity_ok ?? Boolean(block.long_maturity_ok);
+      if (legacyOkay && !longOkay) return "#ffca57";
+      if (!longOkay) return "#ff6f61";
       return "#2fc27d";
     }
 
     function blockNode(block, x, y) {
       const color = blockColor(block);
       const isSplit = block.legacy_maturity_ok !== block.long_maturity_ok;
+      const maturityNote = block.inherited_long_maturity_rejection
+        ? "Descends from a block rejected by the long-maturity rules"
+        : (block.maturity_note || "Both maturity checks agree");
       const minerLines = wrapMinerTag(block.miner_tag);
       const minerText = minerLines.map((line, index) =>
         `<tspan x="46" y="${31 + index * 15}">${escapeHtml(line)}</tspan>`).join("");
@@ -224,7 +254,7 @@
         <text x="46" y="-10" text-anchor="middle" fill="#9db7aa" font-size="12">${block.height}</text>
         <text text-anchor="middle" fill="#06110d" font-size="11" font-weight="800">${minerText}</text>
         <text x="46" y="112" text-anchor="middle" fill="#9db7aa" font-size="11">${minedMinutesAgo(block.timestamp)}</text>
-        <title>${block.height} · ${block.hash}\n${block.maturity_note || 'Both maturity checks agree'}</title>
+        <title>${block.height} · ${block.hash}\n${maturityNote}</title>
       </g>`;
     }
 
@@ -341,6 +371,7 @@
         const worldX = (pointerX - historyTransform.x) / oldScale;
         historyTransform.x = pointerX - worldX * newScale;
         historyTransform.scale = newScale;
+        historyTransform.y = 190 - historyFocusY * newScale;
         applyHistoryTransform();
       }, {passive: false});
       svg.addEventListener("pointerdown", event => {
@@ -439,6 +470,7 @@
       const sceneHeight = Math.max(380, (maxLane - minLane + 1) * 150 + 150);
       const x = block => 70 + columnIndex.get(block.height) * columnGap;
       const y = block => 100 + (lane.get(block.hash) - minLane) * 150;
+      historyFocusY = 100 + (0 - minLane) * 150;
       const contentMinX = Math.min(...selected.map(x)) - 10;
       const contentMaxX = Math.max(...selected.map(x)) + 110;
       const contentMinY = Math.min(...selected.map(y)) - 102;
@@ -578,6 +610,7 @@
         const response = await fetch('/api/status', {cache:'no-store'});
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
+        annotateBranchValidity(data.chain.blocks || []);
         $("live-label").textContent = data.counts.connected_peers ? "Observing peers" : "Waiting for peers";
         $("tip").textContent = data.counts.max_height || "—";
         $("guide-tip").textContent = `mempool.guide ${data.observer.guide_tip || '—'}`;
