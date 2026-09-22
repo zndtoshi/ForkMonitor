@@ -330,6 +330,16 @@
           drawing += chainLink(firstX + 92, y, secondX, y);
           drawing += blockNode(path[1], secondX, y);
         }
+        if (leadBlocks > 1) {
+          const badgeText = `${leadBlocks} blocks ahead`;
+          const badgeWidth = 108;
+          const badgeX = Math.min(width - badgeWidth - 10, latestX + 100);
+          const badgeY = y - 13;
+          drawing += `<g aria-label="${badgeText}">
+            <rect x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="26" rx="13" fill="#123c2b" stroke="#47d695" stroke-width="1.5"/>
+            <text x="${badgeX + badgeWidth / 2}" y="${badgeY + 17}" text-anchor="middle" fill="#8affbe" font-size="11.5" font-weight="800">${badgeText}</text>
+          </g>`;
+        }
       });
 
       $("chain-canvas").innerHTML = `<svg class="fork-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Two observed chains diverging upward and downward from their last common block">${drawing}</svg>`;
