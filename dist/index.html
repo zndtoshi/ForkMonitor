@@ -238,7 +238,9 @@
         .slice(0, 2);
       const width = 1120, height = 360;
       const commonX = 110, commonY = height / 2;
-      const firstX = 310, baseLatestPreviousX = 740, baseLatestX = 900;
+      const blockStep = 200;
+      const firstX = commonX + blockStep;
+      const baseLatestPreviousX = 650, baseLatestX = baseLatestPreviousX + blockStep;
       const branchYs = [92, 268];
       const tipHeights = branchPaths.map(path => path.at(-1).height);
       const shortestTipHeight = Math.min(...tipHeights);
@@ -273,13 +275,16 @@
           drawing += chainLink(latestPreviousX + 92, y, latestX, y);
           drawing += blockNode(path.at(-1), latestX, y);
         } else if (path.length === 3) {
-          drawing += chainLink(firstX + 92, y, latestPreviousX, y);
-          drawing += blockNode(path[1], latestPreviousX, y);
-          drawing += chainLink(latestPreviousX + 92, y, latestX, y);
-          drawing += blockNode(path[2], latestX, y);
+          const secondX = firstX + blockStep;
+          const thirdX = secondX + blockStep;
+          drawing += chainLink(firstX + 92, y, secondX, y);
+          drawing += blockNode(path[1], secondX, y);
+          drawing += chainLink(secondX + 92, y, thirdX, y);
+          drawing += blockNode(path[2], thirdX, y);
         } else if (path.length === 2) {
-          drawing += chainLink(firstX + 92, y, latestX, y);
-          drawing += blockNode(path[1], latestX, y);
+          const secondX = firstX + blockStep;
+          drawing += chainLink(firstX + 92, y, secondX, y);
+          drawing += blockNode(path[1], secondX, y);
         }
       });
 
