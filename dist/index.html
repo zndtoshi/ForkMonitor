@@ -48,7 +48,6 @@
     .value { font-size: clamp(1.25rem, 2.4vw, 1.8rem); line-height: 1; font-weight: 780; letter-spacing: -.03em; }
     .detail { display: block; color: var(--muted); font-size: .82rem; margin-top: 8px; }
     .value.good { color: var(--green); } .value.warn { color: var(--amber); } .value.bad { color: var(--red); }
-    .grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(310px, .8fr); gap: 16px; align-items: start; }
     .panel { border-radius: 16px; overflow: hidden; }
     .panel-head { min-height: 58px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); gap: 16px; }
     .panel h2 { font-size: 1rem; margin: 0; letter-spacing: -.01em; }
@@ -61,6 +60,7 @@
     .swatch { width: 11px; height: 11px; border-radius: 3px; background: var(--green-soft); }
     .swatch.old { background: var(--amber); } .swatch.new { background: var(--red); }
     .rule-list, .peer-list { padding: 4px 18px 16px; }
+    .peer-list { max-height: 290px; overflow: auto; }
     .rule { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: start; padding: 13px 0; border-bottom: 1px solid rgba(36,68,55,.75); }
     .rule:last-child { border-bottom: 0; }
     .rule-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 7px; }
@@ -80,7 +80,7 @@
     .status { text-align: right; font-weight: 700; }
     .status.split { color: var(--red); } .status.same { color: var(--green); }
     footer { color: var(--muted); font-size: .8rem; margin: 16px 2px 0; display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
-    @media (max-width: 1050px) { .stats { grid-template-columns: repeat(3,1fr); } .grid, .lower { grid-template-columns: 1fr; } }
+    @media (max-width: 1050px) { .stats { grid-template-columns: repeat(3,1fr); } .lower { grid-template-columns: 1fr; } }
     @media (max-width: 650px) { .shell { padding: 16px; } header { display: block; } .live { margin-top: 14px; } .stats { grid-template-columns: repeat(2,1fr); } .card:last-child { grid-column: 1 / -1; } .event { grid-template-columns: 70px 1fr; } .event .status { grid-column: 2; text-align: left; } }
   </style>
 </head>
@@ -104,25 +104,24 @@
       <article class="card"><span class="label">Rule disagreements</span><span class="value good" id="splits">0</span><span class="detail">Legacy accepts / Knots rejects</span></article>
     </section>
 
-    <section class="grid">
-      <article class="panel">
-        <div class="panel-head"><h2>Observed chain graph</h2><span class="panel-meta" id="chain-meta">Waiting for blocks</span></div>
-        <div id="chain"><div class="empty">Connecting to peers and downloading post-activation blocks…</div></div>
-        <div class="legend"><span class="key"><i class="swatch"></i>accepted by both maturity checks</span><span class="key"><i class="swatch old"></i>legacy branch</span><span class="key"><i class="swatch new"></i>long-maturity rejection</span></div>
-      </article>
+    <section class="panel">
+      <div class="panel-head"><h2>Observed chain graph</h2><span class="panel-meta" id="chain-meta">Waiting for blocks</span></div>
+      <div id="chain"><div class="empty">Connecting to peers and downloading post-activation blocks…</div></div>
+      <div class="legend"><span class="key"><i class="swatch"></i>accepted by both maturity checks</span><span class="key"><i class="swatch old"></i>legacy branch</span><span class="key"><i class="swatch new"></i>long-maturity rejection</span></div>
+    </section>
 
-      <aside class="panel">
+    <section class="lower">
+      <article class="panel">
         <div class="panel-head"><h2>Rules being compared</h2></div>
         <div class="rule-list">
           <div class="rule"><i class="rule-dot" style="background:var(--amber)"></i><div><strong>Legacy maturity</strong><small>Coinbase spendable after 100 blocks.</small></div><span class="badge">old</span></div>
           <div class="rule"><i class="rule-dot" style="background:var(--red)"></i><div><strong>Knots long maturity</strong><small>Post-973,440 coinbase requires 6,480 blocks through height 979,919.</small></div><span class="badge">new</span></div>
         </div>
+      </article>
+      <article class="panel">
         <div class="panel-head"><h2>Peer connections</h2><span class="panel-meta" id="peer-meta">0 online</span></div>
         <div class="peer-list" id="peer-list"><div class="empty" style="min-height:140px">Resolving BLAKE2b seed peers…</div></div>
-      </aside>
-    </section>
-
-    <section class="lower">
+      </article>
       <article class="panel">
         <div class="panel-head"><h2>Recent raw blocks</h2><span class="panel-meta">Newest first</span></div>
         <div class="events" id="events"><div class="empty" style="min-height:140px">No blocks stored yet.</div></div>
