@@ -269,23 +269,46 @@
     }
 
     function renderFork(data, byHash, children) {
-      const candidates = (data.chain.forks || []).map(fork => ({
-        parent: byHash.get(fork.parent),
-        firstBlocks: fork.children.map(hash => byHash.get(hash)).filter(Boolean)
-      })).filter(item => item.parent && item.firstBlocks.length >= 2)
+      const candidatesByParent = new Map();
+      const addCandidate = (parent, firstBlocks) => {
+        if (!parent) return;
+        const candidate = candidatesByParent.get(parent.hash) || {parent, firstBlocks: new Map()};
+        firstBlocks.filter(Boolean).forEach(block => candidate.firstBlocks.set(block.hash, block));
+        candidatesByParent.set(parent.hash, candidate);
+      };
+      (data.chain.forks || []).forEach(fork => {
+        addCandidate(byHash.get(fork.parent), fork.children.map(hash => byHash.get(hash)));
+      });
+      (data.chain.blocks || []).forEach(block => {
+        const parent = byHash.get(block.prev_hash);
+        const parentLongOkay = parent && (parent.effective_long_maturity_ok ?? Boolean(parent.long_maturity_ok));
+        if (parentLongOkay && Boolean(block.legacy_maturity_ok) && !Boolean(block.long_maturity_ok)) {
+          addCandidate(parent, [block]);
+        }
+      });
+      const candidates = [...candidatesByParent.values()].map(candidate => ({
+        parent: candidate.parent,
+        firstBlocks: [...candidate.firstBlocks.values()]
+      })).filter(item => item.firstBlocks.length >= 1)
         .sort((a, b) => b.parent.height - a.parent.height);
       if (!candidates.length) return false;
 
       const fork = candidates[0];
       const branchPaths = fork.firstBlocks.map(first => bestBranchPath(first, children))
-        .sort((a, b) => b.at(-1).height - a.at(-1).height || b.length - a.length)
+        .sort((a, b) => {
+          const aLongOkay = a[0].effective_long_maturity_ok ?? Boolean(a[0].long_maturity_ok);
+          const bLongOkay = b[0].effective_long_maturity_ok ?? Boolean(b[0].long_maturity_ok);
+          return Number(bLongOkay) - Number(aLongOkay)
+            || b.at(-1).height - a.at(-1).height
+            || b.length - a.length;
+        })
         .slice(0, 2);
       const width = 1180, height = 360;
       const commonX = 190, commonY = height / 2;
       const blockStep = 200;
       const firstX = commonX + blockStep;
       const baseLatestPreviousX = 650, baseLatestX = baseLatestPreviousX + blockStep;
-      const branchYs = [92, 268];
+      const branchYs = branchPaths.length === 1 ? [268] : [92, 268];
       const tipHeights = branchPaths.map(path => path.at(-1).height);
       const shortestTipHeight = Math.min(...tipHeights);
       const omittedCounts = branchPaths.map(path => Math.max(0, path.length - 3));
@@ -334,7 +357,7 @@
           drawing += chainLink(firstX + 92, y, secondX, y);
           drawing += blockNode(path[1], secondX, y);
         }
-        if (leadBlocks > 1) {
+        if (branchPaths.length > 1 && leadBlocks > 1) {
           const badgeText = `${leadBlocks} blocks ahead`;
           const badgeWidth = 108;
           const badgeX = latestX + 100;
