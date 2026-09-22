@@ -40,7 +40,7 @@
     .live { display: inline-flex; align-items: center; gap: 9px; color: var(--green); font-weight: 750; white-space: nowrap; }
     .live-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 6px rgba(109,247,174,.11); animation: pulse 2s infinite; }
     @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(109,247,174,0); } }
-    .stats { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 0; margin-bottom: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: rgba(10,27,21,.82); box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0; margin-bottom: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: rgba(10,27,21,.82); box-shadow: 0 8px 24px rgba(0,0,0,.15); }
     .card, .panel { background: linear-gradient(180deg, rgba(17,39,31,.96), rgba(10,27,21,.96)); border: 1px solid var(--line); box-shadow: var(--shadow); }
     .card { border-radius: 12px; padding: 10px 14px; min-height: 70px; }
     .label { display: block; color: var(--muted); font-size: .74rem; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; }
@@ -111,7 +111,6 @@
       <article class="card"><span class="label">Connected peers</span><span class="value" id="peers">0</span><span class="detail">BLAKE2b-capable seed peers</span></article>
       <article class="card"><span class="label">Raw blocks</span><span class="value" id="blocks">0</span><span class="detail" id="bytes">0 B stored</span></article>
       <article class="card"><span class="label">Observed branches</span><span class="value" id="branches">1</span><span class="detail">Competing descendants retained</span></article>
-      <article class="card"><span class="label">Rule disagreements</span><span class="value good" id="splits">0</span><span class="detail">Legacy accepts / Knots rejects</span></article>
     </section>
 
     <section class="panel">
@@ -645,8 +644,6 @@
         $("bytes").textContent = `${bytes(data.counts.bytes)} stored`;
         const branchCount = Math.max(1, data.chain.tips.length || 0);
         $("branches").textContent = branchCount;
-        $("splits").textContent = data.counts.rule_splits;
-        $("splits").className = `value ${data.counts.rule_splits ? 'bad' : 'good'}`;
         latestData = data;
         if (historyMode) {
           $("history-open").hidden = true;
