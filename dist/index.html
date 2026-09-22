@@ -52,9 +52,19 @@
     .panel-head { min-height: 58px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); gap: 16px; }
     .panel h2 { font-size: 1rem; margin: 0; letter-spacing: -.01em; }
     .panel-meta { color: var(--muted); font-size: .84rem; text-align: right; }
-    #chain { min-height: 270px; overflow: auto; padding: 14px; }
+    #chain { position: relative; min-height: 270px; overflow: auto; padding: 14px; }
     #chain svg { min-width: 680px; width: 100%; height: 260px; display: block; }
     #chain svg.fork-chart { min-width: 1120px; height: 360px; }
+    .graph-title { display: flex; align-items: center; gap: 12px; }
+    .graph-controls { display: flex; gap: 7px; }
+    .graph-button { border: 1px solid #356653; background: #133126; color: #dff8eb; border-radius: 9px; padding: 6px 10px; font-size: .76rem; font-weight: 750; cursor: pointer; }
+    .graph-button:hover { background: #1a4333; border-color: #4d8c72; }
+    .graph-button[hidden] { display: none; }
+    .history-entry { position: absolute; left: 16px; top: 50%; z-index: 3; transform: translateY(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+    .history-help { color: var(--muted); font-size: .78rem; }
+    #chain.history-mode { overflow: hidden; padding: 0; cursor: grab; touch-action: none; user-select: none; }
+    #chain.history-mode.dragging { cursor: grabbing; }
+    #chain.history-mode svg { min-width: 0; width: 100%; height: 430px; }
     .empty { min-height: 350px; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 30px; }
     .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 18px 16px; color: var(--muted); font-size: .82rem; }
     .key { display: inline-flex; align-items: center; gap: 7px; }
@@ -106,8 +116,19 @@
     </section>
 
     <section class="panel">
-      <div class="panel-head"><h2>Observed chain graph</h2><span class="panel-meta" id="chain-meta">Waiting for blocks</span></div>
-      <div id="chain"><div class="empty">Connecting to peers and downloading post-activation blocks…</div></div>
+      <div class="panel-head">
+        <div class="graph-title">
+          <div class="graph-controls">
+            <button class="graph-button" id="history-close" type="button" hidden>Back to present</button>
+          </div>
+          <h2>Observed chain graph</h2>
+        </div>
+        <span class="panel-meta" id="chain-meta">Waiting for blocks</span>
+      </div>
+      <div id="chain">
+        <button class="graph-button history-entry" id="history-open" type="button">Whole history</button>
+        <div id="chain-canvas"><div class="empty">Connecting to peers and downloading post-activation blocks…</div></div>
+      </div>
       <div class="legend"><span class="key"><i class="swatch"></i>accepted by both maturity checks</span><span class="key"><i class="swatch old"></i>legacy branch</span><span class="key"><i class="swatch new"></i>long-maturity rejection</span></div>
     </section>
 
@@ -181,6 +202,10 @@
       }
       return fitted;
     };
+    let latestData = null;
+    let historyMode = new URLSearchParams(location.search).get("history") === "1";
+    let historyInitialized = false;
+    let historyTransform = {scale: 1, x: 0, y: 0};
 
     function blockColor(block) {
       if (block.legacy_maturity_ok && !block.long_maturity_ok) return "#ffca57";
@@ -237,7 +262,7 @@
         .sort((a, b) => b.at(-1).height - a.at(-1).height || b.length - a.length)
         .slice(0, 2);
       const width = 1120, height = 360;
-      const commonX = 110, commonY = height / 2;
+      const commonX = 190, commonY = height / 2;
       const blockStep = 200;
       const firstX = commonX + blockStep;
       const baseLatestPreviousX = 650, baseLatestX = baseLatestPreviousX + blockStep;
@@ -248,10 +273,10 @@
       const fewestOmitted = Math.min(...omittedCounts);
       let drawing = `
         <g aria-label="Earlier common-chain blocks">
-          <circle cx="54" cy="${commonY}" r="3.5" fill="#6f9181"/>
-          <circle cx="66" cy="${commonY}" r="3.5" fill="#6f9181"/>
-          <circle cx="78" cy="${commonY}" r="3.5" fill="#6f9181"/>
-          <path d="M 88 ${commonY} L ${commonX} ${commonY}" fill="none" stroke="#426657" stroke-width="3"/>
+          <circle cx="134" cy="${commonY}" r="3.5" fill="#6f9181"/>
+          <circle cx="146" cy="${commonY}" r="3.5" fill="#6f9181"/>
+          <circle cx="158" cy="${commonY}" r="3.5" fill="#6f9181"/>
+          <path d="M 168 ${commonY} L ${commonX} ${commonY}" fill="none" stroke="#426657" stroke-width="3"/>
         </g>${blockNode(fork.parent, commonX, commonY)}`;
 
       branchPaths.forEach((path, index) => {
@@ -288,9 +313,173 @@
         }
       });
 
-      $("chain").innerHTML = `<svg class="fork-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Two observed chains diverging upward and downward from their last common block">${drawing}</svg>`;
-      $("chain-meta").textContent = `Split after #${fork.parent.height} · ${branchPaths.length} observed chains`;
+      $("chain-canvas").innerHTML = `<svg class="fork-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Two observed chains diverging upward and downward from their last common block">${drawing}</svg>`;
+      $("chain-meta").textContent = `Latest split after #${fork.parent.height} · ${candidates.length} recorded split${candidates.length === 1 ? '' : 's'}`;
       return true;
+    }
+
+    function applyHistoryTransform() {
+      const scene = $("history-scene");
+      if (scene) scene.setAttribute("transform", `translate(${historyTransform.x} ${historyTransform.y}) scale(${historyTransform.scale})`);
+      const zoom = $("history-zoom");
+      if (zoom) zoom.textContent = `${Math.round(historyTransform.scale * 100)}%`;
+    }
+
+    function setupHistoryInteraction(svg) {
+      const viewWidth = 1120;
+      let dragStart = null;
+      svg.addEventListener("wheel", event => {
+        event.preventDefault();
+        const rect = svg.getBoundingClientRect();
+        const pointerX = (event.clientX - rect.left) * viewWidth / rect.width;
+        const oldScale = historyTransform.scale;
+        const newScale = Math.max(.18, Math.min(2.4, oldScale * Math.exp(-event.deltaY * .0015)));
+        const worldX = (pointerX - historyTransform.x) / oldScale;
+        historyTransform.x = pointerX - worldX * newScale;
+        historyTransform.scale = newScale;
+        applyHistoryTransform();
+      }, {passive: false});
+      svg.addEventListener("pointerdown", event => {
+        dragStart = {clientX: event.clientX, x: historyTransform.x};
+        svg.setPointerCapture(event.pointerId);
+        $("chain").classList.add("dragging");
+      });
+      svg.addEventListener("pointermove", event => {
+        if (!dragStart) return;
+        const rect = svg.getBoundingClientRect();
+        historyTransform.x = dragStart.x + (event.clientX - dragStart.clientX) * viewWidth / rect.width;
+        applyHistoryTransform();
+      });
+      const stopDragging = event => {
+        if (!dragStart) return;
+        dragStart = null;
+        if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
+        $("chain").classList.remove("dragging");
+      };
+      svg.addEventListener("pointerup", stopDragging);
+      svg.addEventListener("pointercancel", stopDragging);
+    }
+
+    function renderHistory(data, resetView = false) {
+      const blocks = data.chain.blocks || [];
+      if (!blocks.length) return;
+      const byHash = new Map(blocks.map(block => [block.hash, block]));
+      const children = new Map();
+      blocks.forEach(block => {
+        if (!children.has(block.prev_hash)) children.set(block.prev_hash, []);
+        children.get(block.prev_hash).push(block);
+      });
+      const forks = (data.chain.forks || []).map(fork => ({
+        parent: byHash.get(fork.parent),
+        children: fork.children.map(hash => byHash.get(hash)).filter(Boolean)
+      })).filter(fork => fork.parent && fork.children.length >= 2);
+      const selectedHashes = new Set();
+      const minHeight = Math.min(...blocks.map(block => block.height));
+      blocks.filter(block => block.height === minHeight).forEach(block => selectedHashes.add(block.hash));
+      (data.chain.tips || []).forEach(block => selectedHashes.add(block.hash));
+      blocks.filter(block => block.legacy_maturity_ok !== block.long_maturity_ok)
+        .forEach(block => selectedHashes.add(block.hash));
+      forks.forEach(fork => {
+        selectedHashes.add(fork.parent.hash);
+        fork.children.forEach(first => {
+          const path = bestBranchPath(first, children);
+          selectedHashes.add(first.hash);
+          selectedHashes.add(path.at(-1).hash);
+        });
+      });
+      const selected = blocks.filter(block => selectedHashes.has(block.hash));
+      const selectedByHash = new Map(selected.map(block => [block.hash, block]));
+      const selectedParent = new Map();
+      selected.forEach(block => {
+        let parent = byHash.get(block.prev_hash);
+        const seen = new Set();
+        while (parent && !selectedByHash.has(parent.hash) && !seen.has(parent.hash)) {
+          seen.add(parent.hash);
+          parent = byHash.get(parent.prev_hash);
+        }
+        if (parent) selectedParent.set(block.hash, parent);
+      });
+
+      const selectedChildren = new Map();
+      selected.forEach(block => {
+        const parent = selectedParent.get(block.hash);
+        if (!parent) return;
+        if (!selectedChildren.has(parent.hash)) selectedChildren.set(parent.hash, []);
+        selectedChildren.get(parent.hash).push(block);
+      });
+      const forkDirection = new Map(
+        [...forks]
+          .sort((a, b) => a.parent.height - b.parent.height || a.parent.received_at - b.parent.received_at)
+          .map((fork, index) => [fork.parent.hash, index % 2 === 0 ? 1 : -1])
+      );
+      const lane = new Map();
+      selected.sort((a, b) => a.height - b.height || a.received_at - b.received_at);
+      selected.forEach(block => {
+        const parent = selectedParent.get(block.hash);
+        if (!parent) { lane.set(block.hash, 0); return; }
+        const siblings = (selectedChildren.get(parent.hash) || []).sort((a, b) => {
+          const aPath = bestBranchPath(a, children), bPath = bestBranchPath(b, children);
+          return bPath.at(-1).height - aPath.at(-1).height || bPath.length - aPath.length;
+        });
+        const parentLane = lane.get(parent.hash) || 0;
+        const branchDirection = forkDirection.get(parent.hash) || 1;
+        lane.set(block.hash, siblings[0]?.hash === block.hash ? parentLane : parentLane + branchDirection);
+      });
+
+      const columns = [...new Set(selected.map(block => block.height))].sort((a, b) => a - b);
+      const columnIndex = new Map(columns.map((height, index) => [height, index]));
+      const columnGap = 190;
+      const sceneWidth = Math.max(1120, columns.length * columnGap + 150);
+      const lanes = [...lane.values()];
+      const minLane = Math.min(0, ...lanes), maxLane = Math.max(0, ...lanes);
+      const sceneHeight = Math.max(380, (maxLane - minLane + 1) * 150 + 150);
+      const x = block => 70 + columnIndex.get(block.height) * columnGap;
+      const y = block => 100 + (lane.get(block.hash) - minLane) * 150;
+      const contentMinX = Math.min(...selected.map(x)) - 10;
+      const contentMaxX = Math.max(...selected.map(x)) + 110;
+      const contentMinY = Math.min(...selected.map(y)) - 102;
+      const contentMaxY = Math.max(...selected.map(y)) + 92;
+      const contentWidth = contentMaxX - contentMinX;
+      const contentHeight = contentMaxY - contentMinY;
+      const forkHashes = new Set(forks.map(fork => fork.parent.hash));
+      const links = selected.map(block => {
+        const parent = selectedParent.get(block.hash);
+        if (!parent) return "";
+        const fromX = x(parent) + 92, fromY = y(parent), toX = x(block), toY = y(block);
+        const omitted = Math.max(0, block.height - parent.height - 1);
+        const line = chainLink(fromX, fromY, toX, toY);
+        if (!omitted) return line;
+        const middleX = (fromX + toX) / 2;
+        return `${line}<g aria-label="${omitted} uneventful blocks omitted">
+          <rect x="${middleX-39}" y="${(fromY+toY)/2-18}" width="78" height="36" rx="18" fill="#0b1d16" stroke="#244437"/>
+          <circle cx="${middleX-13}" cy="${(fromY+toY)/2}" r="3.5" fill="#7da08f"/>
+          <circle cx="${middleX}" cy="${(fromY+toY)/2}" r="3.5" fill="#7da08f"/>
+          <circle cx="${middleX+13}" cy="${(fromY+toY)/2}" r="3.5" fill="#7da08f"/>
+          <text x="${middleX}" y="${(fromY+toY)/2-25}" text-anchor="middle" fill="#9db7aa" font-size="11">${omitted} quiet block${omitted === 1 ? '' : 's'}</text>
+        </g>`;
+      }).join("");
+      const splitMarkers = selected.filter(block => forkHashes.has(block.hash)).map(block => `
+        <g aria-label="Split after block ${block.height}">
+          <rect x="${x(block)+17}" y="${y(block)-92}" width="58" height="21" rx="10.5" fill="#3a3016" stroke="#ffca57"/>
+          <text x="${x(block)+46}" y="${y(block)-77}" text-anchor="middle" fill="#ffe29b" font-size="11" font-weight="800">SPLIT</text>
+        </g>`).join("");
+      const nodes = selected.map(block => blockNode(block, x(block), y(block))).join("");
+      $("chain").classList.add("history-mode");
+      $("chain-canvas").innerHTML = `<svg id="history-svg" viewBox="0 0 1120 430" role="img" aria-label="Zoomable and pannable observed chain history">
+        <g id="history-scene">${links}${splitMarkers}${nodes}</g>
+        <g transform="translate(18 392)"><rect width="248" height="28" rx="8" fill="#0b1d16" stroke="#244437"/><text x="12" y="19" fill="#9db7aa" font-size="12">Wheel to zoom · drag left or right · <tspan id="history-zoom">100%</tspan></text></g>
+      </svg>`;
+      if (resetView) {
+        const fitScale = Math.min(1, 1040 / contentWidth, 340 / contentHeight);
+        historyTransform = {
+          scale: fitScale,
+          x: 560 - ((contentMinX + contentMaxX) / 2) * fitScale,
+          y: 190 - ((contentMinY + contentMaxY) / 2) * fitScale,
+        };
+      }
+      applyHistoryTransform();
+      setupHistoryInteraction($("history-svg"));
+      $("chain-meta").textContent = `${forks.length} split${forks.length === 1 ? '' : 's'} across ${blocks.length} observed blocks`;
     }
 
     function renderChain(data) {
@@ -303,6 +492,7 @@
         children.get(block.prev_hash).push(block);
       });
       if (renderFork(data, byHash, children)) return;
+      $("chain").classList.remove("history-mode", "dragging");
       const minHeight = Math.min(...blocks.map(block => block.height));
       const maxHeight = Math.max(...blocks.map(block => block.height));
       const visibleMin = Math.max(minHeight, maxHeight - 3);
@@ -337,7 +527,7 @@
         return chainLink(x(parent) + 92, y(parent), x(block), y(block));
       }).join("");
       const nodes = visible.map(block => blockNode(block, x(block), y(block))).join("");
-      $("chain").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observed blockchain branches; ellipsis before the oldest visible block indicates earlier history">${history}${links}${nodes}</svg>`;
+      $("chain-canvas").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observed blockchain branches; ellipsis before the oldest visible block indicates earlier history">${history}${links}${nodes}</svg>`;
       $("chain-meta").textContent = `${visible.length} recent blocks · ${data.chain.tips.length} observed tip${data.chain.tips.length === 1 ? '' : 's'}`;
     }
 
@@ -360,6 +550,25 @@
       }).join("") : `<div class="empty" style="min-height:140px">No blocks stored yet.</div>`;
     }
 
+    $("history-open").addEventListener("click", () => {
+      if (!latestData) return;
+      historyMode = true;
+      historyInitialized = true;
+      $("history-open").hidden = true;
+      $("history-close").hidden = false;
+      renderHistory(latestData, true);
+    });
+
+    $("history-close").addEventListener("click", () => {
+      if (!latestData) return;
+      historyMode = false;
+      historyInitialized = false;
+      $("history-open").hidden = false;
+      $("history-close").hidden = true;
+      $("chain").classList.remove("history-mode", "dragging");
+      renderChain(latestData);
+    });
+
     async function refresh() {
       try {
         const response = await fetch('/api/status', {cache:'no-store'});
@@ -375,7 +584,14 @@
         $("branches").textContent = branchCount;
         $("splits").textContent = data.counts.rule_splits;
         $("splits").className = `value ${data.counts.rule_splits ? 'bad' : 'good'}`;
-        renderChain(data); renderPeers(data); renderEvents(data);
+        latestData = data;
+        if (historyMode) {
+          $("history-open").hidden = true;
+          $("history-close").hidden = false;
+          renderHistory(data, !historyInitialized);
+          historyInitialized = true;
+        } else renderChain(data);
+        renderPeers(data); renderEvents(data);
         $("updated").textContent = `Updated ${timeAgo(data.updated_at)}`;
       } catch (error) {
         $("live-label").textContent = "Observer unavailable";
