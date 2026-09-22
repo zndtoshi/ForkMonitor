@@ -840,6 +840,10 @@ PROCESS_STARTED = time.time()
 
 def main() -> None:
     init_db()
+    # Connection state is process-local; persisted 1 values from a previous
+    # Render instance must not be reported as online after a restart.
+    with db() as connection:
+        connection.execute("UPDATE peers SET connected = 0")
     backfill_miner_tags()
     peers = discover_peers()
     log(f"starting passive observer with {len(peers)} DNS peer candidates and a {MAX_PEERS}-peer discovery cap")

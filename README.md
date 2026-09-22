@@ -37,4 +37,5 @@ Supported environment variables:
 After handshaking, every connected peer is asked for its known addresses. Public
 addresses advertising the BLAKE2b service bit are connected recursively until
 the configured cap is reached. Private, loopback, reserved, and non-BLAKE2b
-addresses are ignored.
+addresses are ignored. Persisted peer rows are marked offline on every process
+start so the dashboard never carries stale "online" counts across deployments.
