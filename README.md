@@ -20,16 +20,23 @@ There is none. This version is a Render static site:
 - no DNS-seed discovery;
 - no block downloads;
 - no mempool.guide polling;
-- no server process, database, or persistent disk;
+- no active observer process, database access, or persistent disk;
 - no periodic browser polling.
 
 The immutable production data is stored in `dist/snapshot.json`. The browser
 loads it once and performs all chart rendering locally.
 
-The small `Dockerfile` is an archive-only migration fallback for the existing
-Render service. It can only serve the files in `dist/`; it contains no observer
-code and opens no peer connections. The final Blueprint uses static hosting and
-does not run the container.
+The complete monitor implementation remains in `observer.py`. Archive mode is
+the safe default and serves the snapshot without initializing the database,
+resolving seeds, starting peer workers, polling mempool.guide, or downloading
+blocks. The `Dockerfile` also sets `OBSERVER_ARCHIVE_MODE=1`. The final Render
+Blueprint uses static hosting and does not run the container at all.
+
+## Restarting the live monitor later
+
+Set `OBSERVER_ARCHIVE_MODE=0`, restore a writable state directory, and deploy
+the Docker service configuration. This re-enables the existing discovery,
+peer, block-download, database, and API code; nothing needs to be recreated.
 
 ## Render deployment
 
