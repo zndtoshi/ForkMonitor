@@ -210,14 +210,25 @@
         if (siblings.length > 1 && siblings[0].hash !== block.hash) row = ++nextRow;
         rows.set(block.hash, row);
       });
-      const width = Math.max(680, (maxHeight - visibleMin + 1) * 150 + 110);
+      const columnGap = 105;
+      const width = Math.max(680, (maxHeight - visibleMin + 1) * columnGap + 110);
       const height = Math.max(250, (nextRow + 1) * 112 + 110);
-      const x = block => 70 + (block.height - visibleMin) * 150;
-      const y = block => 72 + (rows.get(block.hash) || 0) * 112;
+      const x = block => 55 + (block.height - visibleMin) * columnGap;
+      const y = block => height / 2 + ((rows.get(block.hash) || 0) - nextRow / 2) * 112;
+      const history = visible.filter(block => block.height === visibleMin).map(block => `
+        <g aria-label="Earlier blocks continue into the past">
+          <circle cx="9" cy="${y(block)}" r="3.5" fill="#6f9181"/>
+          <circle cx="21" cy="${y(block)}" r="3.5" fill="#6f9181"/>
+          <circle cx="33" cy="${y(block)}" r="3.5" fill="#6f9181"/>
+          <path d="M 43 ${y(block)} L ${x(block)} ${y(block)}" fill="none" stroke="#426657" stroke-width="3"/>
+        </g>`).join("");
       const links = visible.map(block => {
         const parent = byHash.get(block.prev_hash);
         if (!parent || parent.height < visibleMin) return "";
-        return `<path d="M ${x(parent)+92} ${y(parent)} C ${x(parent)+120} ${y(parent)}, ${x(block)-28} ${y(block)}, ${x(block)} ${y(block)}" fill="none" stroke="#426657" stroke-width="3"/>`;
+        const startX = x(parent) + 92;
+        const endX = x(block);
+        const middleX = (startX + endX) / 2;
+        return `<path d="M ${startX} ${y(parent)} C ${middleX} ${y(parent)}, ${middleX} ${y(block)}, ${endX} ${y(block)}" fill="none" stroke="#426657" stroke-width="3"/>`;
       }).join("");
       const nodes = visible.map(block => {
         const color = blockColor(block);
@@ -233,7 +244,7 @@
           <title>${block.height} · ${block.hash}\n${block.maturity_note || 'Both maturity checks agree'}</title>
         </g>`;
       }).join("");
-      $("chain").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observed blockchain branches">${links}${nodes}</svg>`;
+      $("chain").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observed blockchain branches; ellipsis before the oldest visible block indicates earlier history">${history}${links}${nodes}</svg>`;
       $("chain-meta").textContent = `${visible.length} recent blocks · ${data.chain.tips.length} observed tip${data.chain.tips.length === 1 ? '' : 's'}`;
     }
 
