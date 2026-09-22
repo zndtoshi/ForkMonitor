@@ -54,6 +54,7 @@
     .panel-meta { color: var(--muted); font-size: .84rem; text-align: right; }
     #chain { min-height: 270px; overflow: auto; padding: 14px; }
     #chain svg { min-width: 680px; width: 100%; height: 260px; display: block; }
+    #chain svg.fork-chart { min-width: 1120px; height: 360px; }
     .empty { min-height: 350px; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 30px; }
     .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 18px 16px; color: var(--muted); font-size: .82rem; }
     .key { display: inline-flex; align-items: center; gap: 7px; }
@@ -187,6 +188,106 @@
       return "#2fc27d";
     }
 
+    function blockNode(block, x, y) {
+      const color = blockColor(block);
+      const isSplit = block.legacy_maturity_ok !== block.long_maturity_ok;
+      const minerLines = wrapMinerTag(block.miner_tag);
+      const minerText = minerLines.map((line, index) =>
+        `<tspan x="46" y="${31 + index * 15}">${escapeHtml(line)}</tspan>`).join("");
+      return `<g transform="translate(${x} ${y-46})">
+        <rect width="92" height="92" rx="13" fill="${color}" opacity=".96" stroke="${isSplit ? '#fff1c8' : '#0a1712'}" stroke-width="${isSplit ? 3 : 2}"/>
+        <text x="46" y="-10" text-anchor="middle" fill="#9db7aa" font-size="12">${block.height}</text>
+        <text text-anchor="middle" fill="#06110d" font-size="11" font-weight="800">${minerText}</text>
+        <text x="46" y="112" text-anchor="middle" fill="#9db7aa" font-size="11">${minedMinutesAgo(block.timestamp)}</text>
+        <title>${block.height} · ${block.hash}\n${block.maturity_note || 'Both maturity checks agree'}</title>
+      </g>`;
+    }
+
+    function chainLink(fromX, fromY, toX, toY) {
+      const middleX = (fromX + toX) / 2;
+      return `<path d="M ${fromX} ${fromY} C ${middleX} ${fromY}, ${middleX} ${toY}, ${toX} ${toY}" fill="none" stroke="#426657" stroke-width="3"/>`;
+    }
+
+    function bestBranchPath(first, children) {
+      const visit = (block, seen) => {
+        if (seen.has(block.hash)) return [block];
+        const nextSeen = new Set(seen).add(block.hash);
+        const childBlocks = children.get(block.hash) || [];
+        if (!childBlocks.length) return [block];
+        const candidates = childBlocks.map(child => visit(child, nextSeen));
+        candidates.sort((a, b) => {
+          const aTip = a.at(-1), bTip = b.at(-1);
+          return bTip.height - aTip.height || b.length - a.length || bTip.received_at - aTip.received_at;
+        });
+        return [block, ...candidates[0]];
+      };
+      return visit(first, new Set());
+    }
+
+    function renderFork(data, byHash, children) {
+      const candidates = (data.chain.forks || []).map(fork => ({
+        parent: byHash.get(fork.parent),
+        firstBlocks: fork.children.map(hash => byHash.get(hash)).filter(Boolean)
+      })).filter(item => item.parent && item.firstBlocks.length >= 2)
+        .sort((a, b) => b.parent.height - a.parent.height);
+      if (!candidates.length) return false;
+
+      const fork = candidates[0];
+      const branchPaths = fork.firstBlocks.map(first => bestBranchPath(first, children))
+        .sort((a, b) => b.at(-1).height - a.at(-1).height || b.length - a.length)
+        .slice(0, 2);
+      const width = 1120, height = 360;
+      const commonX = 110, commonY = height / 2;
+      const firstX = 310, baseLatestPreviousX = 740, baseLatestX = 900;
+      const branchYs = [92, 268];
+      const tipHeights = branchPaths.map(path => path.at(-1).height);
+      const shortestTipHeight = Math.min(...tipHeights);
+      const omittedCounts = branchPaths.map(path => Math.max(0, path.length - 3));
+      const fewestOmitted = Math.min(...omittedCounts);
+      let drawing = `
+        <g aria-label="Earlier common-chain blocks">
+          <circle cx="54" cy="${commonY}" r="3.5" fill="#6f9181"/>
+          <circle cx="66" cy="${commonY}" r="3.5" fill="#6f9181"/>
+          <circle cx="78" cy="${commonY}" r="3.5" fill="#6f9181"/>
+          <path d="M 88 ${commonY} L ${commonX} ${commonY}" fill="none" stroke="#426657" stroke-width="3"/>
+        </g>${blockNode(fork.parent, commonX, commonY)}`;
+
+      branchPaths.forEach((path, index) => {
+        const y = branchYs[index];
+        const leadBlocks = Math.max(0, path.at(-1).height - shortestTipHeight);
+        const leadOffset = Math.min(90, leadBlocks * 22);
+        const latestPreviousX = baseLatestPreviousX + leadOffset;
+        const latestX = baseLatestX + leadOffset;
+        drawing += chainLink(commonX + 92, commonY, firstX, y);
+        drawing += blockNode(path[0], firstX, y);
+        if (path.length > 3) {
+          const dotCount = 3 + Math.min(3, omittedCounts[index] - fewestOmitted);
+          const firstDotX = 545;
+          const dots = Array.from({length: dotCount}, (_, dotIndex) =>
+            `<circle cx="${firstDotX + dotIndex * 14}" cy="${y}" r="3.5" fill="#6f9181"/>`).join("");
+          const afterDotsX = firstDotX + (dotCount - 1) * 14 + 25;
+          drawing += `<path d="M ${firstX+92} ${y} L 530 ${y}" fill="none" stroke="#426657" stroke-width="3"/>
+            ${dots}
+            <path d="M ${afterDotsX} ${y} L ${latestPreviousX} ${y}" fill="none" stroke="#426657" stroke-width="3"/>`;
+          drawing += blockNode(path.at(-2), latestPreviousX, y);
+          drawing += chainLink(latestPreviousX + 92, y, latestX, y);
+          drawing += blockNode(path.at(-1), latestX, y);
+        } else if (path.length === 3) {
+          drawing += chainLink(firstX + 92, y, latestPreviousX, y);
+          drawing += blockNode(path[1], latestPreviousX, y);
+          drawing += chainLink(latestPreviousX + 92, y, latestX, y);
+          drawing += blockNode(path[2], latestX, y);
+        } else if (path.length === 2) {
+          drawing += chainLink(firstX + 92, y, latestX, y);
+          drawing += blockNode(path[1], latestX, y);
+        }
+      });
+
+      $("chain").innerHTML = `<svg class="fork-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Two observed chains diverging upward and downward from their last common block">${drawing}</svg>`;
+      $("chain-meta").textContent = `Split after #${fork.parent.height} · ${branchPaths.length} observed chains`;
+      return true;
+    }
+
     function renderChain(data) {
       const blocks = data.chain.blocks || [];
       if (!blocks.length) return;
@@ -196,6 +297,7 @@
         if (!children.has(block.prev_hash)) children.set(block.prev_hash, []);
         children.get(block.prev_hash).push(block);
       });
+      if (renderFork(data, byHash, children)) return;
       const minHeight = Math.min(...blocks.map(block => block.height));
       const maxHeight = Math.max(...blocks.map(block => block.height));
       const visibleMin = Math.max(minHeight, maxHeight - 3);
@@ -227,25 +329,9 @@
       const links = visible.map(block => {
         const parent = byHash.get(block.prev_hash);
         if (!parent || parent.height < visibleMin) return "";
-        const startX = x(parent) + 92;
-        const endX = x(block);
-        const middleX = (startX + endX) / 2;
-        return `<path d="M ${startX} ${y(parent)} C ${middleX} ${y(parent)}, ${middleX} ${y(block)}, ${endX} ${y(block)}" fill="none" stroke="#426657" stroke-width="3"/>`;
+        return chainLink(x(parent) + 92, y(parent), x(block), y(block));
       }).join("");
-      const nodes = visible.map(block => {
-        const color = blockColor(block);
-        const isSplit = block.legacy_maturity_ok !== block.long_maturity_ok;
-        const minerLines = wrapMinerTag(block.miner_tag);
-        const minerText = minerLines.map((line, index) =>
-          `<tspan x="46" y="${31 + index * 15}">${escapeHtml(line)}</tspan>`).join("");
-        return `<g transform="translate(${x(block)} ${y(block)-46})">
-          <rect width="92" height="92" rx="13" fill="${color}" opacity=".96" stroke="${isSplit ? '#fff1c8' : '#0a1712'}" stroke-width="${isSplit ? 3 : 2}"/>
-          <text x="46" y="-10" text-anchor="middle" fill="#9db7aa" font-size="12">${block.height}</text>
-          <text text-anchor="middle" fill="#06110d" font-size="11" font-weight="800">${minerText}</text>
-          <text x="46" y="112" text-anchor="middle" fill="#9db7aa" font-size="11">${minedMinutesAgo(block.timestamp)}</text>
-          <title>${block.height} · ${block.hash}\n${block.maturity_note || 'Both maturity checks agree'}</title>
-        </g>`;
-      }).join("");
+      const nodes = visible.map(block => blockNode(block, x(block), y(block))).join("");
       $("chain").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observed blockchain branches; ellipsis before the oldest visible block indicates earlier history">${history}${links}${nodes}</svg>`;
       $("chain-meta").textContent = `${visible.length} recent blocks · ${data.chain.tips.length} observed tip${data.chain.tips.length === 1 ? '' : 's'}`;
     }
