@@ -75,7 +75,7 @@
     .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 18px 16px; color: var(--muted); font-size: .82rem; }
     .key { display: inline-flex; align-items: center; gap: 7px; }
     .swatch { width: 11px; height: 11px; border-radius: 3px; background: var(--green-soft); }
-    .swatch.old { background: var(--amber); } .swatch.new { background: var(--red); }
+    .swatch.old { background: var(--amber); }
     .peer-list { padding: 4px 18px 16px; }
     .peer-list { max-height: 290px; overflow: auto; }
     .peer { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid rgba(36,68,55,.65); }
@@ -129,7 +129,7 @@
         <div id="chain-canvas"><div class="empty">Connecting to peers and downloading post-activation blocks…</div></div>
         <button class="graph-button history-exit" id="history-close-right" type="button" hidden>Back to present</button>
       </div>
-      <div class="legend"><span class="key"><i class="swatch"></i>accepted by both maturity checks</span><span class="key"><i class="swatch old"></i>legacy branch</span><span class="key"><i class="swatch new"></i>long-maturity rejection</span></div>
+      <div class="legend"><span class="key"><i class="swatch"></i>new rule · 6,480-block coinbase maturity</span><span class="key"><i class="swatch old"></i>legacy rule · 100-block coinbase maturity</span></div>
     </section>
 
     <section class="lower">
