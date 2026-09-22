@@ -166,6 +166,10 @@
     const minedMinutesAgo = (unix) => {
       const minutes = Math.max(0, Math.floor((Date.now()/1000 - unix) / 60));
       if (minutes < 1) return "mined <1 min ago";
+      if (minutes >= 60) {
+        const hours = Math.max(1, Math.round(minutes / 60));
+        return `mined ${hours} hour${hours === 1 ? "" : "s"} ago`;
+      }
       return `mined ${minutes} min${minutes === 1 ? "" : "s"} ago`;
     };
     const escapeHtml = (value) => String(value).replace(/[&<>"']/g, character => ({
