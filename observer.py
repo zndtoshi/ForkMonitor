@@ -14,11 +14,13 @@ import json
 import os
 import queue
 import random
+import re
 import socket
 import sqlite3
 import struct
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from collections import defaultdict
@@ -96,6 +98,7 @@ def init_db() -> None:
                 legacy_maturity_ok INTEGER,
                 long_maturity_ok INTEGER,
                 maturity_note TEXT NOT NULL DEFAULT '',
+                miner_tag TEXT NOT NULL DEFAULT '',
                 raw_path TEXT
             );
             CREATE INDEX IF NOT EXISTS blocks_height_idx ON blocks(height);
@@ -130,6 +133,9 @@ def init_db() -> None:
             );
             """
         )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(blocks)")}
+        if "miner_tag" not in columns:
+            connection.execute("ALTER TABLE blocks ADD COLUMN miner_tag TEXT NOT NULL DEFAULT ''")
 
 
 def sha256d(payload: bytes) -> bytes:
@@ -269,7 +275,36 @@ def parse_header(payload: bytes) -> dict[str, int | str]:
     }
 
 
-def parse_transaction(payload: bytes, offset: int) -> tuple[int, str, list[str], bool]:
+def coinbase_identifier(script: bytes) -> str:
+    """Extract human-readable pool identification from a coinbase scriptSig."""
+    if not script:
+        return ""
+    push_length = script[0]
+    if 1 <= push_length <= 75 and 1 + push_length <= len(script):
+        script = script[1 + push_length :]
+    decoded = script.decode("utf-8", "ignore")
+    cleaned = "".join(
+        character if character.isprintable() and unicodedata.category(character)[0] != "C" else " "
+        for character in decoded
+    )
+    cleaned = " ".join(cleaned.split()).strip(" \x00")
+    pipe_tags = [match.strip() for match in re.findall(r"\|([^|]{3,80})\|", cleaned)]
+    slash_tags = [match.strip() for match in re.findall(r"/([^/]{3,80})/", cleaned)]
+    if pipe_tags:
+        cleaned = " | ".join(pipe_tags)
+    elif slash_tags:
+        cleaned = " / ".join(slash_tags)
+    words: list[str] = []
+    for word in cleaned.strip(" |/^~").split():
+        if word.startswith("|") and len(word) <= 4:
+            continue
+        if words and words[-1].casefold() == word.casefold():
+            continue
+        words.append(word)
+    return " ".join(words)[:120]
+
+
+def parse_transaction(payload: bytes, offset: int) -> tuple[int, str, list[str], bool, str]:
     start = offset
     if offset + 4 > len(payload):
         raise ValueError("short transaction version")
@@ -284,6 +319,7 @@ def parse_transaction(payload: bytes, offset: int) -> tuple[int, str, list[str],
     stripped.extend(compact_size(input_count))
     input_hashes: list[str] = []
     coinbase = False
+    miner_tag = ""
     for input_index in range(input_count):
         input_start = offset
         if offset + 36 > len(payload):
@@ -293,6 +329,7 @@ def parse_transaction(payload: bytes, offset: int) -> tuple[int, str, list[str],
         previous_vout = struct.unpack_from("<I", payload, offset + 32)[0]
         offset += 36
         script_length, offset = read_compact(payload, offset)
+        input_script = payload[offset : offset + script_length]
         offset += script_length
         if offset + 4 > len(payload):
             raise ValueError("short transaction sequence")
@@ -300,6 +337,7 @@ def parse_transaction(payload: bytes, offset: int) -> tuple[int, str, list[str],
         stripped.extend(payload[input_start:offset])
         if input_index == 0 and previous_raw == b"\x00" * 32 and previous_vout == 0xFFFFFFFF:
             coinbase = True
+            miner_tag = coinbase_identifier(input_script)
         elif previous_raw != b"\x00" * 32:
             input_hashes.append(previous_txid)
 
@@ -332,21 +370,23 @@ def parse_transaction(payload: bytes, offset: int) -> tuple[int, str, list[str],
         txid = sha256d(raw_tx)[::-1].hex()
     else:
         txid = sha256d(bytes(stripped))[::-1].hex()
-    return offset, txid, input_hashes, coinbase
+    return offset, txid, input_hashes, coinbase, miner_tag
 
 
-def inspect_block(block_hash: str, payload: bytes) -> tuple[dict[str, int | str], str, list[str]]:
+def inspect_block(block_hash: str, payload: bytes) -> tuple[dict[str, int | str], str, str, list[str]]:
     header = parse_header(payload)
     offset = int(header["header_size"])
     tx_count, offset = read_compact(payload, offset)
     coinbase_txid = ""
+    miner_tag = ""
     spent_txids: list[str] = []
     for tx_index in range(tx_count):
-        offset, txid, inputs, is_coinbase = parse_transaction(payload, offset)
+        offset, txid, inputs, is_coinbase, transaction_miner_tag = parse_transaction(payload, offset)
         if tx_index == 0 and is_coinbase:
             coinbase_txid = txid
+            miner_tag = transaction_miner_tag
         spent_txids.extend(inputs)
-    return header, coinbase_txid, spent_txids
+    return header, coinbase_txid, miner_tag, spent_txids
 
 
 def maturity_labels(height: int, spent_txids: list[str]) -> tuple[int, int, str]:
@@ -399,7 +439,7 @@ def enqueue_block(block_hash: str, height: int | None, source: str) -> None:
 
 def store_block(block_hash: str, expected_height: int | None, peer: str, payload: bytes) -> None:
     try:
-        header, coinbase_txid, spent_txids = inspect_block(block_hash, payload)
+        header, coinbase_txid, miner_tag, spent_txids = inspect_block(block_hash, payload)
         height = int(header["height"])
         if height < 0 and expected_height is not None:
             height = expected_height
@@ -410,8 +450,8 @@ def store_block(block_hash: str, expected_height: int | None, peer: str, payload
             connection.execute(
                 """
                 INSERT INTO blocks(hash, prev_hash, height, timestamp, received_at, peer, size,
-                                   legacy_maturity_ok, long_maturity_ok, maturity_note, raw_path)
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   legacy_maturity_ok, long_maturity_ok, maturity_note, miner_tag, raw_path)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(hash) DO UPDATE SET
                     prev_hash=excluded.prev_hash,
                     height=excluded.height,
@@ -422,6 +462,7 @@ def store_block(block_hash: str, expected_height: int | None, peer: str, payload
                     legacy_maturity_ok=excluded.legacy_maturity_ok,
                     long_maturity_ok=excluded.long_maturity_ok,
                     maturity_note=excluded.maturity_note,
+                    miner_tag=excluded.miner_tag,
                     raw_path=excluded.raw_path
                 """,
                 (
@@ -435,6 +476,7 @@ def store_block(block_hash: str, expected_height: int | None, peer: str, payload
                     legacy_ok,
                     long_ok,
                     note,
+                    miner_tag,
                     str(raw_path),
                 ),
             )
@@ -452,6 +494,37 @@ def store_block(block_hash: str, expected_height: int | None, peer: str, payload
     finally:
         with queue_lock:
             queued_hashes.discard(block_hash)
+
+
+def backfill_miner_tags() -> None:
+    with db() as connection:
+        version_row = connection.execute(
+            "SELECT value FROM meta WHERE key = 'miner_tag_parser_version'"
+        ).fetchone()
+        refresh_all = version_row is None or version_row["value"] != "2"
+        rows = connection.execute(
+            "SELECT hash, raw_path FROM blocks WHERE raw_path IS NOT NULL"
+            if refresh_all
+            else "SELECT hash, raw_path FROM blocks WHERE miner_tag = '' AND raw_path IS NOT NULL"
+        ).fetchall()
+    updated = 0
+    for row in rows:
+        try:
+            raw_path = Path(row["raw_path"])
+            if not raw_path.is_file():
+                continue
+            _, _, miner_tag, _ = inspect_block(row["hash"], raw_path.read_bytes())
+            with db() as connection:
+                connection.execute("UPDATE blocks SET miner_tag = ? WHERE hash = ?", (miner_tag, row["hash"]))
+            updated += 1
+        except Exception as error:
+            log(f"could not backfill miner tag for {row['hash'][:16]}…: {error}")
+    if updated:
+        log(f"backfilled coinbase miner tags for {updated} stored blocks")
+    with db() as connection:
+        connection.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES('miner_tag_parser_version', '2')"
+        )
 
 
 def update_peer(address: str, **values: Any) -> None:
@@ -603,7 +676,7 @@ def branch_data(connection: sqlite3.Connection) -> dict[str, Any]:
     rows = connection.execute(
         """
         SELECT hash, prev_hash, height, timestamp, received_at, peer, size,
-               legacy_maturity_ok, long_maturity_ok, maturity_note
+               legacy_maturity_ok, long_maturity_ok, maturity_note, miner_tag
         FROM blocks
         WHERE height >= ?
         ORDER BY height DESC, received_at DESC
@@ -702,6 +775,7 @@ PROCESS_STARTED = time.time()
 
 def main() -> None:
     init_db()
+    backfill_miner_tags()
     peers = discover_peers()
     log(f"starting passive observer with {len(peers)} peer candidates")
     threading.Thread(target=bootstrap_backfill, name="backfill", daemon=True).start()
