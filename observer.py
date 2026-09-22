@@ -54,7 +54,7 @@ ACTIVATION_HEIGHT = 973_440
 RELEASE_HEIGHT = 979_920
 LEGACY_MATURITY = 100
 LONG_MATURITY = RELEASE_HEIGHT - ACTIVATION_HEIGHT
-NEW_RULE_KNOTS_RELEASE = 20260508
+NEW_RULE_KNOTS_VERSION = (29, 4, 2)
 MAX_PEERS = int(os.environ.get("OBSERVER_MAX_PEERS", "8"))
 
 SEEDS = (
@@ -235,12 +235,19 @@ def parse_addr(payload: bytes) -> list[tuple[str, int, int]]:
 
 
 def peer_rule_set(user_agent: str | None) -> str:
-    """Classify a peer by the release it advertises in its version message."""
+    """Classify a peer by the full Knots version in its version message."""
     if not user_agent:
         return "unknown"
-    release = re.search(r"/Knots:(\d{8})", user_agent)
-    if release and int(release.group(1)) >= NEW_RULE_KNOTS_RELEASE:
-        return "new"
+
+    # 29.4.1 and 29.4.2 share the Knots 20260508 release identifier, but only
+    # 29.4.2 enforces the temporary 6,480-block coinbase-maturity rule.  The
+    # Bitcoin version therefore has to be considered as well as the Knots tag.
+    if "/Knots:" in user_agent:
+        version = re.search(r"/Satoshi:(\d+)\.(\d+)\.(\d+)", user_agent)
+        if not version:
+            return "unknown"
+        parsed_version = tuple(int(part) for part in version.groups())
+        return "new" if parsed_version >= NEW_RULE_KNOTS_VERSION else "legacy"
     return "legacy"
 
 

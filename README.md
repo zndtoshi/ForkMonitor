@@ -39,3 +39,7 @@ addresses advertising the BLAKE2b service bit are connected recursively until
 the configured cap is reached. Private, loopback, reserved, and non-BLAKE2b
 addresses are ignored. Persisted peer rows are marked offline on every process
 start so the dashboard never carries stale "online" counts across deployments.
+Peer rule adoption is classified from the complete advertised version: Knots
+29.4.2 and newer are shown as the new 6,480-block rule, while Knots 29.4.1 and
+older (and non-Knots software) are shown as the legacy 100-block rule. Peers
+whose advertised Knots version cannot be parsed are shown as unknown.
