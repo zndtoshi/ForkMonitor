@@ -4,6 +4,10 @@ Local passive observer for the BLAKE2b Bitcoin peer network. It stores raw peer 
 
 Dashboard: <http://127.0.0.1:8787>
 
+Public deployment: <https://lukecoin.zndtoshi.com>
+
+Source repository: <https://github.com/zndtoshi/ForkMonitor>
+
 Persistent state and raw blocks are stored under `~/.local/state/knots-fork-observer/`.
 
 The observer does **not** determine which chain is Bitcoin, validate proof of work, execute scripts, verify merkle roots, or select a winning chain. It retains peer-observed competing descendants so both branches can be displayed.
@@ -20,6 +24,8 @@ The included `render.yaml` deploys a Docker web service in Render's Singapore re
 6. Add the DNS record Render displays at the DNS provider for `zndtoshi.com`; normally this is a `CNAME` for host `lukecoin` pointing to the generated Render hostname.
 
 Do not deploy this without its persistent disk: Render instances have an ephemeral root filesystem and a restart would otherwise discard the block archive and SQLite database.
+
+The production deployment uses Render service `knots-fork-observer` in Singapore on the Starter plan with a 10 GB persistent disk. Namecheap DNS points the `lukecoin` CNAME to `knots-fork-observer.onrender.com`. Render manages the HTTPS certificate.
 
 Supported environment variables:
 
