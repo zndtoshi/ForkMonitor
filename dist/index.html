@@ -40,13 +40,12 @@
     .live { display: inline-flex; align-items: center; gap: 9px; color: var(--green); font-weight: 750; white-space: nowrap; }
     .live-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 6px rgba(109,247,174,.11); animation: pulse 2s infinite; }
     @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(109,247,174,0); } }
-    .notice { border: 1px solid rgba(255,202,87,.35); background: rgba(255,202,87,.08); color: #ffe2a1; border-radius: 12px; padding: 12px 14px; margin-bottom: 18px; }
-    .stats { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+    .stats { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 10px; margin-bottom: 12px; }
     .card, .panel { background: linear-gradient(180deg, rgba(17,39,31,.96), rgba(10,27,21,.96)); border: 1px solid var(--line); box-shadow: var(--shadow); }
-    .card { border-radius: 14px; padding: 16px; min-height: 102px; }
-    .label { display: block; color: var(--muted); font-size: .82rem; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 7px; }
-    .value { font-size: clamp(1.25rem, 2.4vw, 1.8rem); line-height: 1; font-weight: 780; letter-spacing: -.03em; }
-    .detail { display: block; color: var(--muted); font-size: .82rem; margin-top: 8px; }
+    .card { border-radius: 12px; padding: 10px 14px; min-height: 70px; }
+    .label { display: block; color: var(--muted); font-size: .74rem; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; }
+    .value { font-size: clamp(1.15rem, 2vw, 1.55rem); line-height: 1; font-weight: 780; letter-spacing: -.03em; }
+    .detail { display: block; color: var(--muted); font-size: .75rem; margin-top: 5px; }
     .value.good { color: var(--green); } .value.warn { color: var(--amber); } .value.bad { color: var(--red); }
     .panel { border-radius: 16px; overflow: hidden; }
     .panel-head { min-height: 58px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); gap: 16px; }
@@ -70,13 +69,8 @@
     .key { display: inline-flex; align-items: center; gap: 7px; }
     .swatch { width: 11px; height: 11px; border-radius: 3px; background: var(--green-soft); }
     .swatch.old { background: var(--amber); } .swatch.new { background: var(--red); }
-    .rule-list, .peer-list { padding: 4px 18px 16px; }
+    .peer-list { padding: 4px 18px 16px; }
     .peer-list { max-height: 290px; overflow: auto; }
-    .rule { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: start; padding: 13px 0; border-bottom: 1px solid rgba(36,68,55,.75); }
-    .rule:last-child { border-bottom: 0; }
-    .rule-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 7px; }
-    .rule strong { display: block; } .rule small { color: var(--muted); font-size: .82rem; }
-    .badge { border-radius: 999px; padding: 4px 8px; font-size: .72rem; font-weight: 750; background: rgba(109,247,174,.12); color: var(--green); }
     .peer { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid rgba(36,68,55,.65); }
     .peer:last-child { border-bottom: 0; }
     .peer-state { width: 8px; height: 8px; border-radius: 50%; background: #53665d; }
@@ -105,8 +99,6 @@
       <div class="live"><span class="live-dot"></span><span id="live-label">Connecting</span></div>
     </header>
 
-    <div class="notice"><strong>Observer only.</strong> Raw blocks are stored without proof-of-work, script, merkle, or chain-selection validation. Rule labels below compare coinbase maturity only.</div>
-
     <section class="stats" aria-label="Observer summary">
       <article class="card"><span class="label">Observed tip</span><span class="value" id="tip">—</span><span class="detail" id="guide-tip">Guide tip —</span></article>
       <article class="card"><span class="label">Connected peers</span><span class="value" id="peers">0</span><span class="detail">BLAKE2b-capable seed peers</span></article>
@@ -134,27 +126,12 @@
 
     <section class="lower">
       <article class="panel">
-        <div class="panel-head"><h2>Rules being compared</h2></div>
-        <div class="rule-list">
-          <div class="rule"><i class="rule-dot" style="background:var(--amber)"></i><div><strong>Legacy maturity</strong><small>Coinbase spendable after 100 blocks.</small></div><span class="badge">old</span></div>
-          <div class="rule"><i class="rule-dot" style="background:var(--red)"></i><div><strong>Knots long maturity</strong><small>Post-973,440 coinbase requires 6,480 blocks through height 979,919.</small></div><span class="badge">new</span></div>
-        </div>
-      </article>
-      <article class="panel">
         <div class="panel-head"><h2>Peer connections</h2><span class="panel-meta" id="peer-meta">0 online</span></div>
         <div class="peer-list" id="peer-list"><div class="empty" style="min-height:140px">Resolving BLAKE2b seed peers…</div></div>
       </article>
       <article class="panel">
         <div class="panel-head"><h2>Recent raw blocks</h2><span class="panel-meta">Newest first</span></div>
         <div class="events" id="events"><div class="empty" style="min-height:140px">No blocks stored yet.</div></div>
-      </article>
-      <article class="panel">
-        <div class="panel-head"><h2>Fork trigger</h2></div>
-        <div class="rule-list">
-          <div class="rule"><i class="rule-dot" style="background:var(--green)"></i><div><strong>Activation</strong><small>Long-maturity enforcement began at block 973,440.</small></div><span class="badge">active</span></div>
-          <div class="rule"><i class="rule-dot" style="background:var(--amber)"></i><div><strong>First divergence opportunity</strong><small>Block 973,540 can first spend the activation coinbase under legacy rules.</small></div><span class="badge">watching</span></div>
-          <div class="rule"><i class="rule-dot" style="background:var(--red)"></i><div><strong>Split signal</strong><small>Two children of one parent, or a block legacy maturity accepts while long maturity rejects.</small></div><span class="badge">alert</span></div>
-        </div>
       </article>
     </section>
 
