@@ -210,17 +210,19 @@
         if (siblings.length > 1 && siblings[0].hash !== block.hash) row = ++nextRow;
         rows.set(block.hash, row);
       });
-      const columnGap = 105;
-      const width = Math.max(680, (maxHeight - visibleMin + 1) * columnGap + 110);
+      const columnGap = 145;
+      const visibleSpan = maxHeight - visibleMin;
+      const width = Math.max(680, 2 * (55 + visibleSpan * columnGap + 46));
       const height = Math.max(250, (nextRow + 1) * 112 + 110);
-      const x = block => 55 + (block.height - visibleMin) * columnGap;
+      const latestX = width / 2 - 46;
+      const x = block => latestX - (maxHeight - block.height) * columnGap;
       const y = block => height / 2 + ((rows.get(block.hash) || 0) - nextRow / 2) * 112;
       const history = visible.filter(block => block.height === visibleMin).map(block => `
         <g aria-label="Earlier blocks continue into the past">
-          <circle cx="9" cy="${y(block)}" r="3.5" fill="#6f9181"/>
-          <circle cx="21" cy="${y(block)}" r="3.5" fill="#6f9181"/>
-          <circle cx="33" cy="${y(block)}" r="3.5" fill="#6f9181"/>
-          <path d="M 43 ${y(block)} L ${x(block)} ${y(block)}" fill="none" stroke="#426657" stroke-width="3"/>
+          <circle cx="${x(block)-46}" cy="${y(block)}" r="3.5" fill="#6f9181"/>
+          <circle cx="${x(block)-34}" cy="${y(block)}" r="3.5" fill="#6f9181"/>
+          <circle cx="${x(block)-22}" cy="${y(block)}" r="3.5" fill="#6f9181"/>
+          <path d="M ${x(block)-12} ${y(block)} L ${x(block)} ${y(block)}" fill="none" stroke="#426657" stroke-width="3"/>
         </g>`).join("");
       const links = visible.map(block => {
         const parent = byHash.get(block.prev_hash);
