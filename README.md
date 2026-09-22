@@ -37,8 +37,12 @@ Supported environment variables:
 After handshaking, every connected peer is asked for its known addresses. Public
 addresses advertising the BLAKE2b service bit are connected recursively until
 the configured cap is reached. Private, loopback, reserved, and non-BLAKE2b
-addresses are ignored. Persisted peer rows are marked offline on every process
-start so the dashboard never carries stale "online" counts across deployments.
+addresses are ignored. DNS-seed candidates whose actual version handshake does
+not advertise `NODE_BLAKE2B` are immediately disconnected and do not count as
+online. Persisted peer rows are marked offline on every process start so the
+dashboard never carries stale "online" counts across deployments. The public
+API and dashboard list only currently connected peers; offline peers remain
+internal so the observer can retry them without cluttering the interface.
 Peer rule adoption is classified from the complete advertised version: Knots
 29.4.2 and newer are shown as the new 6,480-block rule, while Knots 29.4.1 and
 older (and non-Knots software) are shown as the legacy 100-block rule. Peers

@@ -70,6 +70,10 @@ peer_workers_lock = threading.Lock()
 peer_workers: dict[str, "PeerWorker"] = {}
 
 
+class UnsupportedPeer(ConnectionError):
+    """The remote peer does not advertise the BLAKE2b network service."""
+
+
 def log(message: str) -> None:
     line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}"
     print(line, flush=True)
@@ -606,6 +610,17 @@ class PeerWorker(threading.Thread):
             try:
                 self.session()
                 delay = 5
+            except UnsupportedPeer as error:
+                update_peer(
+                    self.address,
+                    connected=0,
+                    last_seen=int(time.time()),
+                    last_error=str(error)[:240],
+                )
+                log(f"ignored non-BLAKE2b peer {self.address}: {error}")
+                with peer_workers_lock:
+                    peer_workers.pop(self.address, None)
+                return
             except Exception as error:
                 update_peer(
                     self.address,
@@ -623,8 +638,6 @@ class PeerWorker(threading.Thread):
             sock.settimeout(2)
             sock.sendall(make_message("version", version_payload()))
             handshaken = False
-            update_peer(self.address, connected=1, last_seen=int(time.time()), last_error="")
-            log(f"connected peer {self.address}")
             while not stop_event.is_set():
                 if handshaken and pending is None:
                     pending = self.next_request()
@@ -634,15 +647,23 @@ class PeerWorker(threading.Thread):
                     command, payload = recv_message(sock)
                 except socket.timeout:
                     continue
-                update_peer(self.address, connected=1, last_seen=int(time.time()))
+                update_peer(self.address, last_seen=int(time.time()))
                 if command == "version":
                     services, user_agent, start_height = parse_version(payload)
+                    if not services & NODE_BLAKE2B:
+                        raise UnsupportedPeer(
+                            f"handshake services {services:#x} do not include NODE_BLAKE2B"
+                        )
                     update_peer(
                         self.address,
+                        connected=1,
                         services=services,
                         user_agent=user_agent,
                         start_height=start_height,
+                        last_seen=int(time.time()),
+                        last_error="",
                     )
+                    log(f"connected BLAKE2b peer {self.address}")
                     sock.sendall(make_message("verack"))
                 elif command == "verack":
                     handshaken = True
@@ -769,7 +790,12 @@ def branch_data(connection: sqlite3.Connection) -> dict[str, Any]:
 def status_payload() -> dict[str, Any]:
     with db() as connection:
         peer_rows = connection.execute(
-            "SELECT address, connected, services, user_agent, start_height, last_seen, last_error FROM peers ORDER BY connected DESC, last_seen DESC"
+            """
+            SELECT address, connected, services, user_agent, start_height, last_seen, last_error
+            FROM peers
+            WHERE connected = 1
+            ORDER BY last_seen DESC
+            """
         ).fetchall()
         counts = connection.execute(
             """
@@ -786,7 +812,7 @@ def status_payload() -> dict[str, Any]:
     peers = [dict(row) for row in peer_rows]
     for peer in peers:
         peer["rule_set"] = peer_rule_set(peer.get("user_agent"))
-    connected_peers = [peer for peer in peers if peer["connected"]]
+    connected_peers = peers
     return {
         "observer": {
             "mode": "passive-unvalidated",
