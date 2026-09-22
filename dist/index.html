@@ -276,7 +276,7 @@
       const branchPaths = fork.firstBlocks.map(first => bestBranchPath(first, children))
         .sort((a, b) => b.at(-1).height - a.at(-1).height || b.length - a.length)
         .slice(0, 2);
-      const width = 1120, height = 360;
+      const width = 1180, height = 360;
       const commonX = 190, commonY = height / 2;
       const blockStep = 200;
       const firstX = commonX + blockStep;
@@ -333,7 +333,7 @@
         if (leadBlocks > 1) {
           const badgeText = `${leadBlocks} blocks ahead`;
           const badgeWidth = 108;
-          const badgeX = Math.min(width - badgeWidth - 10, latestX + 100);
+          const badgeX = latestX + 100;
           const badgeY = y - 13;
           drawing += `<g aria-label="${badgeText}">
             <rect x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="26" rx="13" fill="#123c2b" stroke="#47d695" stroke-width="1.5"/>
