@@ -1,0 +1,21 @@
+# Reference for the existing, suspended Docker service. Resuming paid compute
+# requires owner approval; the free archive frontend remains separate.
+services:
+  - type: web
+    name: knots-fork-observer
+    runtime: docker
+    plan: starter
+    region: singapore
+    autoDeploy: false
+    healthCheckPath: /api/health
+    disk:
+      name: observer-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: OBSERVER_ARCHIVE_MODE
+        value: "0"
+      - key: OBSERVER_STATE_DIR
+        value: /var/data/knots-fork-observer-180d
+      - key: OBSERVER_MAX_PEERS
+        value: "4"

@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Passive observer for Bitcoin Knots maturity-rule forks">
+  <title>45-day maturity fork · 21–22 September 2026 | ForkMonitor</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M8 32h19m0 0 12-14h17M27 32l12 14h17' fill='none' stroke='%236df7ae' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07110e;
+      --surface: #0d1c17;
+      --surface-2: #11271f;
+      --line: #244437;
+      --text: #edf9f2;
+      --muted: #9db7aa;
+      --green: #6df7ae;
+      --green-soft: #2fc27d;
+      --amber: #ffca57;
+      --red: #ff6f61;
+      --blue: #62a9ff;
+      --shadow: 0 18px 60px rgba(0,0,0,.28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 85% -10%, rgba(47,194,125,.16), transparent 32rem),
+        linear-gradient(180deg, #081611, var(--bg));
+      color: var(--text);
+      font: 16px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button { font: inherit; }
+    .shell { max-width: 1480px; margin: 0 auto; padding: 24px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 20px; }
+    h1 { font-size: clamp(1.55rem, 3vw, 2.35rem); line-height: 1.08; margin: 0 0 8px; letter-spacing: -.035em; }
+    .subtitle { color: var(--muted); margin: 0; max-width: 760px; }
+    .live { display: inline-flex; align-items: center; gap: 9px; color: var(--green); font-weight: 750; white-space: nowrap; }
+    .live.archive { color: var(--amber); }
+    .live-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 6px rgba(255,202,87,.11); }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(109,247,174,0); } }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0; margin-bottom: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: rgba(10,27,21,.82); box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+    .card, .panel { background: linear-gradient(180deg, rgba(17,39,31,.96), rgba(10,27,21,.96)); border: 1px solid var(--line); box-shadow: var(--shadow); }
+    .card { border-radius: 12px; padding: 10px 14px; min-height: 70px; }
+    .label { display: block; color: var(--muted); font-size: .74rem; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; }
+    .value { font-size: clamp(1.15rem, 2vw, 1.55rem); line-height: 1; font-weight: 780; letter-spacing: -.03em; }
+    .detail { display: block; color: var(--muted); font-size: .75rem; margin-top: 5px; }
+    .stats .card { min-height: 0; padding: 9px 13px; border: 0; border-right: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .stats .card:last-child { border-right: 0; }
+    .stats .label { margin: 0; font-size: .68rem; white-space: nowrap; }
+    .stats .value { font-size: 1.05rem; }
+    .stats .detail { display: none; }
+    .value.good { color: var(--green); } .value.warn { color: var(--amber); } .value.bad { color: var(--red); }
+    .panel { border-radius: 16px; overflow: hidden; }
+    .panel-head { min-height: 58px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); gap: 16px; }
+    .panel h2 { font-size: 1rem; margin: 0; letter-spacing: -.01em; }
+    .panel-meta { color: var(--muted); font-size: .84rem; text-align: right; }
+    .peer-summary { display: inline-flex; align-items: center; justify-content: flex-end; gap: 11px; flex-wrap: wrap; }
+    .rule-count { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    #chain { position: relative; min-height: 270px; overflow: auto; padding: 14px; }
+    #chain svg { min-width: 680px; width: 100%; height: 260px; display: block; }
+    #chain svg.fork-chart { min-width: 1120px; height: 360px; }
+    .graph-title { display: flex; align-items: center; gap: 12px; }
+    .graph-controls { display: flex; gap: 7px; }
+    .graph-button { border: 1px solid #356653; background: #133126; color: #dff8eb; border-radius: 9px; padding: 6px 10px; font-size: .76rem; font-weight: 750; cursor: pointer; }
+    .graph-button:hover { background: #1a4333; border-color: #4d8c72; }
+    .graph-button[hidden] { display: none; }
+    .history-entry { position: absolute; left: 16px; top: 50%; z-index: 3; transform: translateY(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+    .history-exit { position: absolute; right: 16px; top: 50%; z-index: 3; transform: translateY(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+    .history-help { color: var(--muted); font-size: .78rem; }
+    #chain.history-mode { overflow: hidden; padding: 0; cursor: grab; touch-action: none; user-select: none; }
+    #chain.history-mode.dragging { cursor: grabbing; }
+    #chain.history-mode #chain-canvas { width: calc(100% - 132px); }
+    #chain.history-mode svg { min-width: 0; width: 100%; height: 430px; }
+    .empty { min-height: 350px; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 30px; }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 18px 16px; color: var(--muted); font-size: .82rem; }
+    .key { display: inline-flex; align-items: center; gap: 7px; }
+    .swatch { width: 11px; height: 11px; border-radius: 3px; background: var(--green-soft); }
+    .swatch.old { background: var(--amber); }
+    .peer-list { padding: 4px 18px 16px; }
+    .peer-list { max-height: 290px; overflow: auto; }
+    .peer { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid rgba(36,68,55,.65); }
+    .peer:last-child { border-bottom: 0; }
+    .peer-state { width: 8px; height: 8px; border-radius: 50%; background: #53665d; }
+    .peer-state.on { background: var(--green); box-shadow: 0 0 10px rgba(109,247,174,.6); }
+    .peer-address { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; overflow: hidden; text-overflow: ellipsis; }
+    .peer-version { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .peer-rule { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 2px; background: #53665d; }
+    .peer-rule.new { background: var(--green-soft); }
+    .peer-rule.legacy { background: var(--amber); }
+    .peer-agent { color: var(--muted); font-size: .75rem; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lower { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .events { padding: 8px 18px 18px; max-height: 290px; overflow: auto; }
+    .event { display: grid; grid-template-columns: 82px 1fr 110px; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(36,68,55,.65); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; }
+    .event:last-child { border-bottom: 0; }
+    .hash { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b9d3c5; }
+    .status { text-align: right; font-weight: 700; }
+    .status.split { color: var(--red); } .status.same { color: var(--green); }
+    @media (max-width: 1050px) { .stats { grid-template-columns: repeat(3,1fr); } .lower { grid-template-columns: 1fr; } }
+    @media (max-width: 650px) { .shell { padding: 16px; } header { display: block; } .live { margin-top: 14px; } .stats { grid-template-columns: repeat(2,1fr); } .card:last-child { grid-column: 1 / -1; } #chain.history-mode #chain-canvas { width: 100%; } .history-exit { display: none !important; } .event { grid-template-columns: 70px 1fr; } .event .status { grid-column: 2; text-align: left; } }
+  .archive-highlight { display:flex; gap:24px; align-items:center; margin:0 0 20px; padding:20px 28px; border:1px solid #a7792c; border-radius:16px; background:linear-gradient(130deg,#3b2b14,#17221a); box-shadow:inset 0 1px 0 #ffe5a64d,0 10px 40px #0004; }
+    .archive-highlight strong { font-size:78px; line-height:1; color:#ffcf65; text-shadow:0 2px 0 #785016,0 5px 12px #0008; }
+    .archive-highlight b { color:#ffe3a2; letter-spacing:.08em; }
+    .archive-highlight p { margin:5px 0 0; color:#c2b79e; font-size:.85rem; }
+    html.embedded header, html.embedded .archive-highlight, html.embedded .stats { display:none; }
+    html.embedded body { background:transparent; }
+    html.embedded .shell { padding:0; }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <h1>45-day coinbase maturity<br><span style="color:var(--muted);font-size:.65em">21–22 September 2026</span></h1>
+        <p class="subtitle">Rule introduced at block 973,440 on 21 September. Frozen on 22 September 2026 at 18:24 GST; 201 observed blocks preserved.</p>
+      </div>
+      <div class="live archive"><span class="live-dot"></span><span id="live-label">Historical snapshot</span></div>
+    </header>
+
+    <section class="archive-highlight" aria-label="Historic split count"><strong>8</strong><div><b>RECORDED CHAIN SPLITS</b><p>22 September 2026 · 9 blocks with maturity-rule disagreements</p></div></section>
+    <section class="stats" aria-label="Observer summary">
+      <article class="card"><span class="label">Archived tip</span><span class="value" id="tip">—</span><span class="detail" id="guide-tip">Snapshot tip —</span></article>
+      <article class="card"><span class="label">Peers at snapshot</span><span class="value" id="peers">0</span><span class="detail">No live connections</span></article>
+      <article class="card"><span class="label">Archived blocks</span><span class="value" id="blocks">0</span><span class="detail" id="bytes">0 B captured</span></article>
+      <article class="card"><span class="label">Observed branches</span><span class="value" id="branches">1</span><span class="detail">Competing descendants retained</span></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="graph-title">
+          <div class="graph-controls">
+            <button class="graph-button" id="history-close" type="button" hidden>Back to present</button>
+          </div>
+          <h2>Observed chain graph</h2>
+        </div>
+        <span class="panel-meta" id="chain-meta">Loading archived blocks</span>
+      </div>
+      <div id="chain">
+        <button class="graph-button history-entry" id="history-open" type="button">Whole history</button>
+        <div id="chain-canvas"><div class="empty">Loading the frozen chain history…</div></div>
+        <button class="graph-button history-exit" id="history-close-right" type="button" hidden>Back to present</button>
+      </div>
+      <div class="legend"><span class="key"><i class="swatch"></i>new rule · 6,480-block coinbase maturity</span><span class="key"><i class="swatch old"></i>legacy rule · 100-block coinbase maturity</span></div>
+    </section>
+
+    <section class="lower">
+      <article class="panel">
+        <div class="panel-head"><h2>Peer snapshot</h2><span class="panel-meta peer-summary" id="peer-meta">0 captured</span></div>
+        <div class="peer-list" id="peer-list"><div class="empty" style="min-height:140px">Loading the archived peer list…</div></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><h2>Archived blocks</h2><span class="panel-meta">Newest first</span></div>
+        <div class="events" id="events"><div class="empty" style="min-height:140px">Loading archived blocks…</div></div>
+      </article>
+    </section>
+
+  </main>
+
+  <script>
+    if (new URLSearchParams(location.search).has("embed")) document.documentElement.classList.add("embedded");
+    const $ = (id) => document.getElementById(id);
+    const shortHash = (hash) => hash ? `${hash.slice(0, 7)}…${hash.slice(-5)}` : "—";
+    const bytes = (value) => {
+      if (!value) return "0 B";
+      const units = ["B", "KB", "MB", "GB"];
+      let index = 0, amount = value;
+      while (amount >= 1024 && index < units.length - 1) { amount /= 1024; index++; }
+      return `${amount.toFixed(index ? 1 : 0)} ${units[index]}`;
+    };
+    const timeAgo = (unix) => {
+      if (!unix) return "never";
+      const seconds = Math.max(0, Math.floor(Date.now()/1000 - unix));
+      if (seconds < 60) return `${seconds}s ago`;
+      if (seconds < 3600) return `${Math.floor(seconds/60)}m ago`;
+      return `${Math.floor(seconds/3600)}h ago`;
+    };
+    const minedMinutesAgo = (unix) => {
+      const minutes = Math.max(0, Math.floor((Date.now()/1000 - unix) / 60));
+      if (minutes < 1) return "mined <1 min ago";
+      if (minutes >= 1440) {
+        const days = Math.max(1, Math.round(minutes / 1440));
+        return `mined ${days} day${days === 1 ? "" : "s"} ago`;
+      }
+      if (minutes >= 60) {
+        const hours = Math.max(1, Math.round(minutes / 60));
+        return `mined ${hours} hour${hours === 1 ? "" : "s"} ago`;
+      }
+      return `mined ${minutes} min${minutes === 1 ? "" : "s"} ago`;
+    };
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, character => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+    })[character]);
+    const wrapMinerTag = (value, width = 14, limit = 3) => {
+      const source = (value || "Unidentified miner").trim();
+      const words = source.split(/\s+/);
+      const lines = [];
+      for (const word of words) {
+        if (lines.length === 0 || `${lines.at(-1)} ${word}`.trim().length > width) lines.push(word);
+        else lines[lines.length - 1] += ` ${word}`;
+      }
+      const fitted = lines.flatMap(line => line.length > width
+        ? line.match(new RegExp(`.{1,${width}}`, "g")) || [line]
+        : [line]).slice(0, limit);
+      if (lines.join(" ").length > fitted.join(" ").length && fitted.length) {
+        fitted[fitted.length - 1] = `${fitted[fitted.length - 1].slice(0, width - 1)}…`;
+      }
+      return fitted;
+    };
+    let latestData = null;
+    let historyMode = new URLSearchParams(location.search).get("history") === "1";
+    let historyInitialized = false;
+    let historyTransform = {scale: 1, x: 0, y: 0};
+    let historyFocusY = 190;
+
+    function annotateBranchValidity(blocks) {
+      const byHash = new Map(blocks.map(block => [block.hash, block]));
+      const memo = new Map();
+      const resolve = (block, visiting = new Set()) => {
+        if (memo.has(block.hash)) return memo.get(block.hash);
+        if (visiting.has(block.hash)) {
+          return {legacy: Boolean(block.legacy_maturity_ok), long: Boolean(block.long_maturity_ok)};
+        }
+        const nextVisiting = new Set(visiting).add(block.hash);
+        const parent = byHash.get(block.prev_hash);
+        const parentValidity = parent ? resolve(parent, nextVisiting) : {legacy: true, long: true};
+        const validity = {
+          legacy: parentValidity.legacy && Boolean(block.legacy_maturity_ok),
+          long: parentValidity.long && Boolean(block.long_maturity_ok),
+        };
+        block.effective_legacy_maturity_ok = validity.legacy;
+        block.effective_long_maturity_ok = validity.long;
+        block.inherited_long_maturity_rejection = Boolean(block.long_maturity_ok) && !validity.long;
+        memo.set(block.hash, validity);
+        return validity;
+      };
+      blocks.forEach(block => resolve(block));
+    }
+
+    function blockColor(block) {
+      const legacyOkay = block.effective_legacy_maturity_ok ?? Boolean(block.legacy_maturity_ok);
+      const longOkay = block.effective_long_maturity_ok ?? Boolean(block.long_maturity_ok);
+      if (legacyOkay && !longOkay) return "#ffca57";
+      if (!longOkay) return "#ff6f61";
+      return "#2fc27d";
+    }
+
+    function blockNode(block, x, y) {
+      const color = blockColor(block);
+      const isSplit = block.legacy_maturity_ok !== block.long_maturity_ok;
+      const maturityNote = block.inherited_long_maturity_rejection
+        ? "Descends from a block rejected by the long-maturity rules"
+        : (block.maturity_note || "Both maturity checks agree");
+      const minerLines = wrapMinerTag(block.miner_tag);
+      const minerText = minerLines.map((line, index) =>
+        `<tspan x="46" y="${31 + index * 15}">${escapeHtml(line)}</tspan>`).join("");
+      return `<g transform="translate(${x} ${y-46})">
+        <rect width="92" height="92" rx="13" fill="${color}" opacity=".96" stroke="${isSplit ? '#fff1c8' : '#0a1712'}" stroke-width="${isSplit ? 3 : 2}"/>
+        <text x="46" y="-10" text-anchor="middle" fill="#9db7aa" font-size="12">${block.height}</text>
+        <text text-anchor="middle" fill="#06110d" font-size="11" font-weight="800">${minerText}</text>
+        <text x="46" y="112" text-anchor="middle" fill="#9db7aa" font-size="11">${minedMinutesAgo(block.timestamp)}</text>
+        <title>${block.height} · ${block.hash}\n${maturityNote}</title>
+      </g>`;
+    }
+
+    function chainLink(fromX, fromY, toX, toY) {
+      const middleX = (fromX + toX) / 2;
+      return `<path d="M ${fromX} ${fromY} C ${middleX} ${fromY}, ${middleX} ${toY}, ${toX} ${toY}" fill="none" stroke="#426657" stroke-width="3"/>`;
+    }
+
+    function frozenSnapshotCard(data, x, y) {
+      const tip = data.counts?.max_height || "—";
+      const capturedAt = data.archive?.captured_at || data.updated_at;
+      const captured = capturedAt
+        ? new Date(capturedAt * 1000).toLocaleDateString([], {year: "numeric", month: "short", day: "numeric"})
+        : "Historical capture";
+      return `<g transform="translate(${x} ${y-39})" aria-label="Frozen historical snapshot at block ${tip}">
+        <rect width="190" height="78" rx="14" fill="#10292e" stroke="#8ed8f5" stroke-opacity=".62" stroke-width="1.5"/>
+        <path d="M8 25 L25 8 M158 70 L181 47 M167 8 L181 22" fill="none" stroke="#c8f1ff" stroke-opacity=".13"/>
+        <circle cx="27" cy="39" r="17" fill="#5cb6d9" fill-opacity=".11" stroke="#a6e4fa" stroke-opacity=".24"/>
+        <text x="27" y="46" text-anchor="middle" fill="#c9f2ff" font-size="21">❄</text>
+        <text x="53" y="24" fill="#dff7ff" font-size="11.5" font-weight="800" letter-spacing=".7">FROZEN SNAPSHOT</text>
+        <text x="53" y="43" fill="#add7e3" font-size="11">Block #${tip} · ${captured}</text>
+        <text x="53" y="60" fill="#82aab5" font-size="10.5">Read-only · no live updates</text>
+        <title>Immutable historical capture. Peer connections, block downloads, and live chain updates are disabled.</title>
+      </g>`;
+    }
+
+    function bestBranchPath(first, children) {
+      const visit = (block, seen) => {
+        if (seen.has(block.hash)) return [block];
+        const nextSeen = new Set(seen).add(block.hash);
+        const childBlocks = children.get(block.hash) || [];
+        if (!childBlocks.length) return [block];
+        const candidates = childBlocks.map(child => visit(child, nextSeen));
+        candidates.sort((a, b) => {
+          const aTip = a.at(-1), bTip = b.at(-1);
+          return bTip.height - aTip.height || b.length - a.length || bTip.received_at - aTip.received_at;
+        });
+        return [block, ...candidates[0]];
+      };
+      return visit(first, new Set());
+    }
+
+    function renderFork(data, byHash, children) {
+      const candidatesByParent = new Map();
+      const addCandidate = (parent, firstBlocks) => {
+        if (!parent) return;
+        const candidate = candidatesByParent.get(parent.hash) || {parent, firstBlocks: new Map()};
+        firstBlocks.filter(Boolean).forEach(block => candidate.firstBlocks.set(block.hash, block));
+        candidatesByParent.set(parent.hash, candidate);
+      };
+      (data.chain.forks || []).forEach(fork => {
+        addCandidate(byHash.get(fork.parent), fork.children.map(hash => byHash.get(hash)));
+      });
+      (data.chain.blocks || []).forEach(block => {
+        const parent = byHash.get(block.prev_hash);
+        const parentLongOkay = parent && (parent.effective_long_maturity_ok ?? Boolean(parent.long_maturity_ok));
+        if (parentLongOkay && Boolean(block.legacy_maturity_ok) && !Boolean(block.long_maturity_ok)) {
+          addCandidate(parent, [block]);
+        }
+      });
+      const candidates = [...candidatesByParent.values()].map(candidate => ({
+        parent: candidate.parent,
+        firstBlocks: [...candidate.firstBlocks.values()]
+      })).filter(item => item.firstBlocks.length >= 1)
+        .sort((a, b) => b.parent.height - a.parent.height);
+      if (!candidates.length) return false;
+
+      const fork = candidates[0];
+      const branchPaths = fork.firstBlocks.map(first => bestBranchPath(first, children))
+        .sort((a, b) => {
+          const aLongOkay = a[0].effective_long_maturity_ok ?? Boolean(a[0].long_maturity_ok);
+          const bLongOkay = b[0].effective_long_maturity_ok ?? Boolean(b[0].long_maturity_ok);
+          return Number(bLongOkay) - Number(aLongOkay)
+            || b.at(-1).height - a.at(-1).height
+            || b.length - a.length;
+        })
+        .slice(0, 2);
+      const width = 1280, height = 360;
+      const commonX = 190, commonY = height / 2;
+      const blockStep = 200;
+      const firstX = commonX + blockStep;
+      const baseLatestPreviousX = 650, baseLatestX = baseLatestPreviousX + blockStep;
+      const branchYs = branchPaths.length === 1 ? [268] : [92, 268];
+      const tipHeights = branchPaths.map(path => path.at(-1).height);
+      const shortestTipHeight = Math.min(...tipHeights);
+      const omittedCounts = branchPaths.map(path => Math.max(0, path.length - 3));
+      const fewestOmitted = Math.min(...omittedCounts);
+      let rightmostTipX = firstX;
+      let drawing = `
+        <g aria-label="Earlier common-chain blocks">
+          <circle cx="134" cy="${commonY}" r="3.5" fill="#6f9181"/>
+          <circle cx="146" cy="${commonY}" r="3.5" fill="#6f9181"/>
+          <circle cx="158" cy="${commonY}" r="3.5" fill="#6f9181"/>
+          <path d="M 168 ${commonY} L ${commonX} ${commonY}" fill="none" stroke="#426657" stroke-width="3"/>
+        </g>${blockNode(fork.parent, commonX, commonY)}`;
+
+      branchPaths.forEach((path, index) => {
+        const y = branchYs[index];
+        const leadBlocks = Math.max(0, path.at(-1).height - shortestTipHeight);
+        const leadOffset = Math.min(90, leadBlocks * 22);
+        const latestPreviousX = baseLatestPreviousX + leadOffset;
+        const latestX = baseLatestX + leadOffset;
+        let pathTipX = firstX;
+        drawing += chainLink(commonX + 92, commonY, firstX, y);
+        drawing += blockNode(path[0], firstX, y);
+        if (path.length > 3) {
+          const dotCount = 3 + Math.min(3, omittedCounts[index] - fewestOmitted);
+          const firstDotX = 545;
+          const dots = Array.from({length: dotCount}, (_, dotIndex) =>
+            `<circle cx="${firstDotX + dotIndex * 14}" cy="${y}" r="3.5" fill="#6f9181"/>`).join("");
+          const afterDotsX = firstDotX + (dotCount - 1) * 14 + 25;
+          const dotsCenterX = (firstDotX + firstDotX + (dotCount - 1) * 14) / 2;
+          const quietCount = omittedCounts[index];
+          drawing += `<path d="M ${firstX+92} ${y} L 530 ${y}" fill="none" stroke="#426657" stroke-width="3"/>
+            <rect x="${dotsCenterX-45}" y="${y-32}" width="90" height="20" rx="10" fill="#0b1d16" stroke="#244437"/>
+            <text x="${dotsCenterX}" y="${y-18}" text-anchor="middle" fill="#9db7aa" font-size="10.5">${quietCount} quiet block${quietCount === 1 ? '' : 's'}</text>
+            ${dots}
+            <path d="M ${afterDotsX} ${y} L ${latestPreviousX} ${y}" fill="none" stroke="#426657" stroke-width="3"/>`;
+          drawing += blockNode(path.at(-2), latestPreviousX, y);
+          drawing += chainLink(latestPreviousX + 92, y, latestX, y);
+          drawing += blockNode(path.at(-1), latestX, y);
+          pathTipX = latestX;
+        } else if (path.length === 3) {
+          const secondX = firstX + blockStep;
+          const thirdX = secondX + blockStep;
+          drawing += chainLink(firstX + 92, y, secondX, y);
+          drawing += blockNode(path[1], secondX, y);
+          drawing += chainLink(secondX + 92, y, thirdX, y);
+          drawing += blockNode(path[2], thirdX, y);
+          pathTipX = thirdX;
+        } else if (path.length === 2) {
+          const secondX = firstX + blockStep;
+          drawing += chainLink(firstX + 92, y, secondX, y);
+          drawing += blockNode(path[1], secondX, y);
+          pathTipX = secondX;
+        }
+        rightmostTipX = Math.max(rightmostTipX, pathTipX);
+      });
+
+      drawing += frozenSnapshotCard(data, Math.min(width - 206, rightmostTipX + 118), commonY);
+
+      $("chain-canvas").innerHTML = `<svg class="fork-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Two observed chains diverging upward and downward from their last common block">${drawing}</svg>`;
+      $("chain-meta").textContent = `Latest split after #${fork.parent.height} · ${candidates.length} recorded split${candidates.length === 1 ? '' : 's'}`;
+      return true;
+    }
+
+    function applyHistoryTransform() {
+      const scene = $("history-scene");
+      if (scene) scene.setAttribute("transform", `translate(${historyTransform.x} ${historyTransform.y}) scale(${historyTransform.scale})`);
+      const zoom = $("history-zoom");
+      if (zoom) zoom.textContent = `${Math.round(historyTransform.scale * 100)}%`;
+    }
+
+    function setupHistoryInteraction(svg) {
+      const viewWidth = 1120;
+      let dragStart = null;
+      svg.addEventListener("wheel", event => {
+        event.preventDefault();
+        const rect = svg.getBoundingClientRect();
+        const pointerX = (event.clientX - rect.left) * viewWidth / rect.width;
+        const oldScale = historyTransform.scale;
+        const newScale = Math.max(.18, Math.min(2.4, oldScale * Math.exp(-event.deltaY * .0015)));
+        const worldX = (pointerX - historyTransform.x) / oldScale;
+        historyTransform.x = pointerX - worldX * newScale;
+        historyTransform.scale = newScale;
+        historyTransform.y = 190 - historyFocusY * newScale;
+        applyHistoryTransform();
+      }, {passive: false});
+      svg.addEventListener("pointerdown", event => {
+        dragStart = {clientX: event.clientX, x: historyTransform.x};
+        svg.setPointerCapture(event.pointerId);
+        $("chain").classList.add("dragging");
+      });
+      svg.addEventListener("pointermove", event => {
+        if (!dragStart) return;
+        const rect = svg.getBoundingClientRect();
+        historyTransform.x = dragStart.x + (event.clientX - dragStart.clientX) * viewWidth / rect.width;
+        applyHistoryTransform();
+      });
+      const stopDragging = event => {
+        if (!dragStart) return;
+        dragStart = null;
+        if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
+        $("chain").classList.remove("dragging");
+      };
+      svg.addEventListener("pointerup", stopDragging);
+      svg.addEventListener("pointercancel", stopDragging);
+    }
+
+    function renderHistory(data, resetView = false) {
+      const blocks = data.chain.blocks || [];
+      if (!blocks.length) return;
+      const byHash = new Map(blocks.map(block => [block.hash, block]));
+      const children = new Map();
+      blocks.forEach(block => {
+        if (!children.has(block.prev_hash)) children.set(block.prev_hash, []);
+        children.get(block.prev_hash).push(block);
+      });
+      const forks = (data.chain.forks || []).map(fork => ({
+        parent: byHash.get(fork.parent),
+        children: fork.children.map(hash => byHash.get(hash)).filter(Boolean)
+      })).filter(fork => fork.parent && fork.children.length >= 2);
+      const selectedHashes = new Set();
+      const minHeight = Math.min(...blocks.map(block => block.height));
+      blocks.filter(block => block.height === minHeight).forEach(block => selectedHashes.add(block.hash));
+      (data.chain.tips || []).forEach(block => selectedHashes.add(block.hash));
+      blocks.filter(block => block.legacy_maturity_ok !== block.long_maturity_ok)
+        .forEach(block => selectedHashes.add(block.hash));
+      forks.forEach(fork => {
+        selectedHashes.add(fork.parent.hash);
+        fork.children.forEach(first => {
+          const path = bestBranchPath(first, children);
+          selectedHashes.add(first.hash);
+          selectedHashes.add(path.at(-1).hash);
+        });
+      });
+      const selected = blocks.filter(block => selectedHashes.has(block.hash));
+      const selectedByHash = new Map(selected.map(block => [block.hash, block]));
+      const selectedParent = new Map();
+      selected.forEach(block => {
+        let parent = byHash.get(block.prev_hash);
+        const seen = new Set();
+        while (parent && !selectedByHash.has(parent.hash) && !seen.has(parent.hash)) {
+          seen.add(parent.hash);
+          parent = byHash.get(parent.prev_hash);
+        }
+        if (parent) selectedParent.set(block.hash, parent);
+      });
+
+      const selectedChildren = new Map();
+      selected.forEach(block => {
+        const parent = selectedParent.get(block.hash);
+        if (!parent) return;
+        if (!selectedChildren.has(parent.hash)) selectedChildren.set(parent.hash, []);
+        selectedChildren.get(parent.hash).push(block);
+      });
+      const forkDirection = new Map(
+        [...forks]
+          .sort((a, b) => a.parent.height - b.parent.height || a.parent.received_at - b.parent.received_at)
+          .map((fork, index) => [fork.parent.hash, index % 2 === 0 ? 1 : -1])
+      );
+      const lane = new Map();
+      selected.sort((a, b) => a.height - b.height || a.received_at - b.received_at);
+      selected.forEach(block => {
+        const parent = selectedParent.get(block.hash);
+        if (!parent) { lane.set(block.hash, 0); return; }
+        const siblings = (selectedChildren.get(parent.hash) || []).sort((a, b) => {
+          const aPath = bestBranchPath(a, children), bPath = bestBranchPath(b, children);
+          return bPath.at(-1).height - aPath.at(-1).height || bPath.length - aPath.length;
+        });
+        const parentLane = lane.get(parent.hash) || 0;
+        const branchDirection = forkDirection.get(parent.hash) || 1;
+        lane.set(block.hash, siblings[0]?.hash === block.hash ? parentLane : parentLane + branchDirection);
+      });
+
+      const columns = [...new Set(selected.map(block => block.height))].sort((a, b) => a - b);
+      const columnIndex = new Map(columns.map((height, index) => [height, index]));
+      const columnGap = 190;
+      const sceneWidth = Math.max(1120, columns.length * columnGap + 150);
+      const lanes = [...lane.values()];
+      const minLane = Math.min(0, ...lanes), maxLane = Math.max(0, ...lanes);
+      const sceneHeight = Math.max(380, (maxLane - minLane + 1) * 150 + 150);
+      const x = block => 70 + columnIndex.get(block.height) * columnGap;
+      const y = block => 100 + (lane.get(block.hash) - minLane) * 150;
+      historyFocusY = 100 + (0 - minLane) * 150;
+      const contentMinX = Math.min(...selected.map(x)) - 10;
+      const contentMaxX = Math.max(...selected.map(x)) + 110;
+      const contentMinY = Math.min(...selected.map(y)) - 102;
+      const contentMaxY = Math.max(...selected.map(y)) + 92;
+      const contentWidth = contentMaxX - contentMinX;
+      const contentHeight = contentMaxY - contentMinY;
+      const forkHashes = new Set(forks.map(fork => fork.parent.hash));
+      const links = selected.map(block => {
+        const parent = selectedParent.get(block.hash);
+        if (!parent) return "";
+        const fromX = x(parent) + 92, fromY = y(parent), toX = x(block), toY = y(block);
+        const omitted = Math.max(0, block.height - parent.height - 1);
+        const line = chainLink(fromX, fromY, toX, toY);
+        if (!omitted) return line;
+        const middleX = (fromX + toX) / 2;
+        return `${line}<g aria-label="${omitted} uneventful blocks omitted">
+          <rect x="${middleX-39}" y="${(fromY+toY)/2-18}" width="78" height="36" rx="18" fill="#0b1d16" stroke="#244437"/>
+          <circle cx="${middleX-13}" cy="${(fromY+toY)/2}" r="3.5" fill="#7da08f"/>
+          <circle cx="${middleX}" cy="${(fromY+toY)/2}" r="3.5" fill="#7da08f"/>
+          <circle cx="${middleX+13}" cy="${(fromY+toY)/2}" r="3.5" fill="#7da08f"/>
+          <text x="${middleX}" y="${(fromY+toY)/2-25}" text-anchor="middle" fill="#9db7aa" font-size="11">${omitted} quiet block${omitted === 1 ? '' : 's'}</text>
+        </g>`;
+      }).join("");
+      const splitMarkers = selected.filter(block => forkHashes.has(block.hash)).map(block => `
+        <g aria-label="Split after block ${block.height}">
+          <rect x="${x(block)+17}" y="${y(block)-92}" width="58" height="21" rx="10.5" fill="#3a3016" stroke="#ffca57"/>
+          <text x="${x(block)+46}" y="${y(block)-77}" text-anchor="middle" fill="#ffe29b" font-size="11" font-weight="800">SPLIT</text>
+        </g>`).join("");
+      const nodes = selected.map(block => blockNode(block, x(block), y(block))).join("");
+      $("chain").classList.add("history-mode");
+      $("chain-canvas").innerHTML = `<svg id="history-svg" viewBox="0 0 1120 430" role="img" aria-label="Zoomable and pannable observed chain history">
+        <g id="history-scene">${links}${splitMarkers}${nodes}</g>
+        <g transform="translate(18 392)"><rect width="248" height="28" rx="8" fill="#0b1d16" stroke="#244437"/><text x="12" y="19" fill="#9db7aa" font-size="12">Wheel to zoom · drag left or right · <tspan id="history-zoom">100%</tspan></text></g>
+      </svg>`;
+      if (resetView) {
+        const fitScale = Math.min(1, 1040 / contentWidth, 340 / contentHeight);
+        historyTransform = {
+          scale: fitScale,
+          x: 560 - ((contentMinX + contentMaxX) / 2) * fitScale,
+          y: 190 - ((contentMinY + contentMaxY) / 2) * fitScale,
+        };
+      }
+      applyHistoryTransform();
+      setupHistoryInteraction($("history-svg"));
+      $("chain-meta").textContent = `${forks.length} split${forks.length === 1 ? '' : 's'} across ${blocks.length} observed blocks`;
+    }
+
+    function renderChain(data) {
+      const blocks = data.chain.blocks || [];
+      if (!blocks.length) return;
+      const byHash = new Map(blocks.map(block => [block.hash, block]));
+      const children = new Map();
+      blocks.forEach(block => {
+        if (!children.has(block.prev_hash)) children.set(block.prev_hash, []);
+        children.get(block.prev_hash).push(block);
+      });
+      if (renderFork(data, byHash, children)) return;
+      $("chain").classList.remove("history-mode", "dragging");
+      const minHeight = Math.min(...blocks.map(block => block.height));
+      const maxHeight = Math.max(...blocks.map(block => block.height));
+      const visibleMin = Math.max(minHeight, maxHeight - 3);
+      const visible = blocks.filter(block => block.height >= visibleMin);
+      const rows = new Map();
+      visible.sort((a,b) => a.height - b.height || a.hash.localeCompare(b.hash));
+      let nextRow = 0;
+      visible.forEach(block => {
+        const parentRow = rows.get(block.prev_hash);
+        const siblings = (children.get(block.prev_hash) || []).filter(item => item.height >= visibleMin);
+        let row = parentRow ?? 0;
+        if (siblings.length > 1 && siblings[0].hash !== block.hash) row = ++nextRow;
+        rows.set(block.hash, row);
+      });
+      const columnGap = 145;
+      const visibleSpan = maxHeight - visibleMin;
+      const width = Math.max(680, 2 * (55 + visibleSpan * columnGap + 46));
+      const height = Math.max(250, (nextRow + 1) * 112 + 110);
+      const latestX = width / 2 - 46;
+      const x = block => latestX - (maxHeight - block.height) * columnGap;
+      const y = block => height / 2 + ((rows.get(block.hash) || 0) - nextRow / 2) * 112;
+      const history = visible.filter(block => block.height === visibleMin).map(block => `
+        <g aria-label="Earlier blocks continue into the past">
+          <circle cx="${x(block)-46}" cy="${y(block)}" r="3.5" fill="#6f9181"/>
+          <circle cx="${x(block)-34}" cy="${y(block)}" r="3.5" fill="#6f9181"/>
+          <circle cx="${x(block)-22}" cy="${y(block)}" r="3.5" fill="#6f9181"/>
+          <path d="M ${x(block)-12} ${y(block)} L ${x(block)} ${y(block)}" fill="none" stroke="#426657" stroke-width="3"/>
+        </g>`).join("");
+      const links = visible.map(block => {
+        const parent = byHash.get(block.prev_hash);
+        if (!parent || parent.height < visibleMin) return "";
+        return chainLink(x(parent) + 92, y(parent), x(block), y(block));
+      }).join("");
+      const nodes = visible.map(block => blockNode(block, x(block), y(block))).join("");
+      const frozen = frozenSnapshotCard(data, latestX + 118, height / 2);
+      $("chain-canvas").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observed blockchain branches; ellipsis before the oldest visible block indicates earlier history">${history}${links}${nodes}${frozen}</svg>`;
+      $("chain-meta").textContent = `${visible.length} recent blocks · ${data.chain.tips.length} observed tip${data.chain.tips.length === 1 ? '' : 's'}`;
+    }
+
+    function renderPeers(data) {
+      const peers = data.peers || [];
+      $("peer-meta").innerHTML = `
+        <span>${data.counts.connected_peers} captured</span>
+        <span class="rule-count"><i class="peer-rule new"></i>${data.counts.new_rule_peers || 0} new</span>
+        <span class="rule-count"><i class="peer-rule legacy"></i>${data.counts.legacy_rule_peers || 0} legacy</span>`;
+      $("peer-list").innerHTML = peers.length ? peers.map(peer => `
+        <div class="peer">
+          <i class="peer-state" title="Historical peer"></i>
+          <span class="peer-address" title="${peer.address}">${peer.address}</span>
+          <span class="peer-version">
+            <i class="peer-rule ${peer.rule_set || 'unknown'}"></i>
+            <span class="peer-agent" title="${peer.user_agent || ''}">${peer.user_agent || 'version unknown'}</span>
+          </span>
+        </div>`).join("") : `<div class="empty" style="min-height:140px">No peers discovered yet.</div>`;
+    }
+
+    function renderEvents(data) {
+      const blocks = (data.chain.blocks || []).slice(0, 30);
+      $("events").innerHTML = blocks.length ? blocks.map(block => {
+        const split = block.legacy_maturity_ok !== block.long_maturity_ok;
+        return `<div class="event"><span>#${block.height}</span><span class="hash" title="${block.hash}">${shortHash(block.hash)}</span><span class="status ${split ? 'split' : 'same'}">${split ? 'RULE SPLIT' : 'agree'}</span></div>`;
+      }).join("") : `<div class="empty" style="min-height:140px">No blocks stored yet.</div>`;
+    }
+
+    $("history-open").addEventListener("click", () => {
+      if (!latestData) return;
+      historyMode = true;
+      historyInitialized = true;
+      $("history-open").hidden = true;
+      $("history-close").hidden = false;
+      $("history-close-right").hidden = false;
+      renderHistory(latestData, true);
+    });
+
+    const closeHistory = () => {
+      if (!latestData) return;
+      historyMode = false;
+      historyInitialized = false;
+      $("history-open").hidden = false;
+      $("history-close").hidden = true;
+      $("history-close-right").hidden = true;
+      $("chain").classList.remove("history-mode", "dragging");
+      renderChain(latestData);
+    };
+    $("history-close").addEventListener("click", closeHistory);
+    $("history-close-right").addEventListener("click", closeHistory);
+
+    async function loadSnapshot() {
+      try {
+        const response = await fetch('./snapshot.json');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        annotateBranchValidity(data.chain.blocks || []);
+        $("live-label").textContent = "Historical snapshot";
+        $("tip").textContent = data.counts.max_height || "—";
+        $("guide-tip").textContent = `Snapshot tip ${data.observer.guide_tip || '—'}`;
+        $("peers").textContent = data.counts.connected_peers;
+        $("blocks").textContent = data.counts.blocks;
+        $("bytes").textContent = `${bytes(data.counts.bytes)} captured`;
+        const branchCount = Math.max(1, data.chain.tips.length || 0);
+        $("branches").textContent = branchCount;
+        latestData = data;
+        if (historyMode) {
+          $("history-open").hidden = true;
+          $("history-close").hidden = false;
+          $("history-close-right").hidden = false;
+          renderHistory(data, !historyInitialized);
+          historyInitialized = true;
+        } else renderChain(data);
+        renderPeers(data); renderEvents(data);
+      } catch (error) {
+        $("live-label").textContent = "Snapshot unavailable";
+        $("chain-meta").textContent = String(error);
+      }
+    }
+    loadSnapshot();
+  </script>
+</body>
+</html>

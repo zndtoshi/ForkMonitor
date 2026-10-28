@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     OBSERVER_HOST=0.0.0.0 \
     OBSERVER_ARCHIVE_MODE=1 \
-    OBSERVER_STATE_DIR=/var/data/knots-fork-observer
+    OBSERVER_STATE_DIR=/var/data/knots-fork-observer-180d
 
 WORKDIR /app
 COPY observer.py ./observer.py

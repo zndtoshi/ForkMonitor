@@ -3,11 +3,13 @@
 
 This program records peer-announced BLAKE2b blocks without performing proof of
 work, transaction-script, merkle-root, or chain-selection validation. It only
-parses enough structure to link a block to its parent and compare the legacy
-100-block coinbase-maturity rule with Knots' temporary 6,480-block rule.
+parses enough structure to link a block to its parent and compare the earlier maturity rules with the rolling 25,920-block rule.
+The immutable September capture is served separately from live state.
 """
 
 from __future__ import annotations
+
+from contextlib import contextmanager
 
 import hashlib
 import ipaddress
@@ -33,7 +35,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "dist"
 STATE_DIR = Path(
-    os.environ.get("OBSERVER_STATE_DIR", str(Path.home() / ".local/state/knots-fork-observer"))
+    os.environ.get("OBSERVER_STATE_DIR", str(Path.home() / ".local/state/knots-fork-observer-180d"))
 ).expanduser()
 BLOCK_DIR = STATE_DIR / "blocks"
 DB_PATH = STATE_DIR / "observer.sqlite3"
@@ -50,12 +52,17 @@ NODE_BLAKE2B = 1 << 28
 SERVICES = NODE_NETWORK | NODE_WITNESS | NODE_BLAKE2B
 MSG_BLOCK = 2
 
-ACTIVATION_HEIGHT = 973_440
-RELEASE_HEIGHT = 979_920
+HISTORICAL_START = 973_440
+HISTORICAL_RELEASE = 979_920
+ACTIVATION_HEIGHT = 979_919
+# Collect context before activation, without importing the frozen archive.
+START_HEIGHT = ACTIVATION_HEIGHT - 720
+RELEASE_HEIGHT = None  # Rolling coverage ends by parent MTP, never a fixed height.
+RDTS_EXPIRY = 1_819_756_800  # 2027-09-01 00:00 UTC
 LEGACY_MATURITY = 100
-LONG_MATURITY = RELEASE_HEIGHT - ACTIVATION_HEIGHT
-NEW_RULE_KNOTS_VERSION = (29, 4, 2)
-MAX_PEERS = int(os.environ.get("OBSERVER_MAX_PEERS", "8"))
+LONG_MATURITY = 25_920
+NEW_RULE_KNOTS_VERSION = (29, 4, 3)
+MAX_PEERS = max(1, min(8, int(os.environ.get("OBSERVER_MAX_PEERS", "4"))))
 ARCHIVE_MODE = os.environ.get("OBSERVER_ARCHIVE_MODE", "1").strip().lower() not in {
     "0",
     "false",
@@ -69,7 +76,7 @@ SEEDS = (
 )
 
 stop_event = threading.Event()
-download_queue: queue.Queue[tuple[str, int | None, str]] = queue.Queue()
+download_queue: queue.Queue[tuple[str, int | None, str]] = queue.Queue(maxsize=2048)
 queued_hashes: set[str] = set()
 queue_lock = threading.Lock()
 peer_workers_lock = threading.Lock()
@@ -88,17 +95,22 @@ def log(message: str) -> None:
         handle.write(line + "\n")
 
 
-def db() -> sqlite3.Connection:
+@contextmanager
+def db():
     connection = sqlite3.connect(DB_PATH, timeout=20)
     connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA journal_mode=WAL")
-    return connection
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
 
 
 def init_db() -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     BLOCK_DIR.mkdir(parents=True, exist_ok=True)
     with db() as connection:
+        connection.execute("PRAGMA journal_mode=WAL")
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS blocks (
@@ -119,9 +131,15 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS blocks_prev_idx ON blocks(prev_hash);
 
             CREATE TABLE IF NOT EXISTS coinbases (
-                txid TEXT PRIMARY KEY,
+                txid TEXT NOT NULL,
                 height INTEGER NOT NULL,
-                block_hash TEXT NOT NULL
+                block_hash TEXT NOT NULL,
+                PRIMARY KEY(txid, block_hash)
+            );
+            CREATE TABLE IF NOT EXISTS block_inputs (
+                block_hash TEXT NOT NULL,
+                txid TEXT NOT NULL,
+                PRIMARY KEY(block_hash, txid)
             );
 
             CREATE TABLE IF NOT EXISTS announcements (
@@ -249,16 +267,15 @@ def peer_rule_set(user_agent: str | None) -> str:
     if not user_agent:
         return "unknown"
 
-    # 29.4.1 and 29.4.2 share the Knots 20260508 release identifier, but only
-    # 29.4.2 enforces the temporary 6,480-block coinbase-maturity rule.  The
-    # Bitcoin version therefore has to be considered as well as the Knots tag.
+    # Self-reported versions suggest support; they do not prove enforcement.
+    # The rolling rule ships in 29.4.3, not 29.4.2.
     if "/Knots:" in user_agent:
         version = re.search(r"/Satoshi:(\d+)\.(\d+)\.(\d+)", user_agent)
         if not version:
             return "unknown"
         parsed_version = tuple(int(part) for part in version.groups())
         return "new" if parsed_version >= NEW_RULE_KNOTS_VERSION else "legacy"
-    return "legacy"
+    return "unknown"
 
 
 def recv_exact(sock: socket.socket, amount: int) -> bytes:
@@ -277,7 +294,7 @@ def recv_message(sock: socket.socket) -> tuple[str, bytes]:
         raise ValueError("unexpected network magic")
     command = header[4:16].rstrip(b"\x00").decode("ascii", "replace")
     length = struct.unpack_from("<I", header, 16)[0]
-    if length > 64 * 1024 * 1024:
+    if length > 8 * 1024 * 1024:
         raise ValueError(f"oversized peer payload: {length}")
     expected_checksum = header[20:24]
     payload = recv_exact(sock, length)
@@ -441,27 +458,92 @@ def inspect_block(block_hash: str, payload: bytes) -> tuple[dict[str, int | str]
     return header, coinbase_txid, miner_tag, spent_txids
 
 
-def maturity_labels(height: int, spent_txids: list[str]) -> tuple[int, int, str]:
-    legacy_ok = True
-    long_ok = True
-    notes: list[str] = []
+def maturity_labels(height: int, spent_txids: list[str], parent_hash: str = "") -> tuple[int | None, int | None, str]:
+    """Compare observed coinbase spends on this branch, never a full validation.
+
+    Unknown txids may be ordinary inputs or unobserved coinbases. Never infer
+    global validity from absence of a conflict in this partial block archive.
+    """
     if height < 0:
-        return 1, 1, "Header height unavailable"
+        return None, None, "Header height unavailable"
+    previous_ok, rolling_ok = True, True
+    notes = []
     with db() as connection:
-        for txid in spent_txids:
-            row = connection.execute("SELECT height FROM coinbases WHERE txid = ?", (txid,)).fetchone()
-            if row is None:
+        candidates = []
+        for txid in set(spent_txids):
+            candidates.extend(connection.execute(
+                "SELECT txid,height,block_hash FROM coinbases WHERE txid=?", (txid,)).fetchall())
+        if not candidates:
+            return 1, 1, "No observed coinbase-maturity conflict (partial observation)"
+        lowest = min(int(row["height"]) for row in candidates) - 11
+        ancestry = connection.execute("""
+            WITH RECURSIVE ancestors AS (
+                SELECT hash,prev_hash,height,timestamp FROM blocks WHERE hash=?
+                UNION ALL
+                SELECT b.hash,b.prev_hash,b.height,b.timestamp FROM blocks b
+                JOIN ancestors a ON b.hash=a.prev_hash
+                WHERE b.height=a.height-1 AND b.height>=?
+            ) SELECT * FROM ancestors
+        """, (parent_hash, lowest)).fetchall()
+        by_hash = {row["hash"]: row for row in ancestry}
+        ancestry_min = min((row["height"] for row in ancestry), default=height)
+        unknown = False
+        for coin in candidates:
+            mined_height = int(coin["height"])
+            mined = by_hash.get(coin["block_hash"])
+            if not mined:
+                # A known reward on a sibling branch is not an ancestor spend.
+                if ancestry_min > mined_height:
+                    unknown = True
                 continue
-            coinbase_height = int(row["height"])
-            age = height - coinbase_height
-            if age < LEGACY_MATURITY:
-                legacy_ok = False
-                long_ok = False
-                notes.append(f"coinbase {coinbase_height} spent at age {age}: rejected by both maturity rules")
-            elif ACTIVATION_HEIGHT <= coinbase_height and height < RELEASE_HEIGHT and age < LONG_MATURITY:
-                long_ok = False
-                notes.append(f"coinbase {coinbase_height} spent at age {age}: legacy accepts, long maturity rejects")
-    return int(legacy_ok), int(long_ok), "; ".join(notes)
+            age = height - mined_height
+            previous_required = (6480 if HISTORICAL_START <= mined_height
+                                 and height < HISTORICAL_RELEASE else LEGACY_MATURITY)
+            required = previous_required
+            if height >= ACTIVATION_HEIGHT and mined_height >= ACTIVATION_HEIGHT:
+                timestamps = []
+                cursor = by_hash.get(mined["prev_hash"])
+                for _ in range(11):
+                    if cursor is None:
+                        break
+                    timestamps.append(cursor["timestamp"])
+                    cursor = by_hash.get(cursor["prev_hash"])
+                if len(timestamps) < 11:
+                    unknown = True
+                    continue
+                mining_parent_mtp = sorted(timestamps)[len(timestamps)//2]
+                if mining_parent_mtp < RDTS_EXPIRY:
+                    required = LONG_MATURITY
+            previous_ok = previous_ok and age >= previous_required
+            rolling_ok = rolling_ok and age >= required
+            if age < required or age < previous_required:
+                notes.append(f"coinbase #{mined_height} spent at depth {age}: previous needs {previous_required}, rolling needs {required}")
+        if unknown:
+            notes.append("Some coinbase ancestry or mining-parent timestamps are missing; check pending")
+    return (int(previous_ok) if not unknown or not previous_ok else None,
+            int(rolling_ok) if not unknown or not rolling_ok else None,
+            "; ".join(notes) or "No observed coinbase-maturity conflict (partial observation)")
+
+
+def recheck_descendants(parent_hash: str) -> None:
+    """Late parent downloads must correct earlier incomplete classifications."""
+    pending = [parent_hash]
+    seen = set()
+    while pending:
+        parent = pending.pop()
+        if parent in seen:
+            continue
+        seen.add(parent)
+        with db() as connection:
+            children = connection.execute("SELECT hash,height,prev_hash FROM blocks WHERE prev_hash=?", (parent,)).fetchall()
+        for child in children:
+            with db() as connection:
+                inputs = [row[0] for row in connection.execute("SELECT txid FROM block_inputs WHERE block_hash=?", (child["hash"],))]
+            previous, rolling, note = maturity_labels(child["height"], inputs, child["prev_hash"])
+            with db() as connection:
+                connection.execute("UPDATE blocks SET legacy_maturity_ok=?,long_maturity_ok=?,maturity_note=? WHERE hash=?",
+                                   (previous, rolling, note, child["hash"]))
+            pending.append(child["hash"])
 
 
 def record_announcement(block_hash: str, peer: str) -> None:
@@ -485,8 +567,11 @@ def enqueue_block(block_hash: str, height: int | None, source: str) -> None:
     with queue_lock:
         if block_hash in queued_hashes:
             return
+        try:
+            download_queue.put_nowait((block_hash, height, source))
+        except queue.Full:
+            return  # The bounded backfill scan retries missing heights later.
         queued_hashes.add(block_hash)
-    download_queue.put((block_hash, height, source))
 
 
 def store_block(block_hash: str, expected_height: int | None, peer: str, payload: bytes) -> None:
@@ -495,7 +580,13 @@ def store_block(block_hash: str, expected_height: int | None, peer: str, payload
         height = int(header["height"])
         if height < 0 and expected_height is not None:
             height = expected_height
-        legacy_ok, long_ok, note = maturity_labels(height, spent_txids)
+        if height < START_HEIGHT - 11:
+            return
+        legacy_ok, long_ok, note = maturity_labels(height, spent_txids, str(header["prev_hash"]))
+        if not re.fullmatch(r"[0-9a-f]{64}", block_hash):
+            raise ValueError("invalid announced block hash")
+        if expected_height is not None and height != expected_height:
+            raise ValueError("block height disagrees with requested height")
         raw_path = BLOCK_DIR / f"{block_hash}.blk"
         raw_path.write_bytes(payload)
         with db() as connection:
@@ -537,7 +628,12 @@ def store_block(block_hash: str, expected_height: int | None, peer: str, payload
                     "INSERT OR REPLACE INTO coinbases(txid, height, block_hash) VALUES(?, ?, ?)",
                     (coinbase_txid, height, block_hash),
                 )
-        if legacy_ok != long_ok:
+            connection.executemany("INSERT OR IGNORE INTO block_inputs(block_hash,txid) VALUES(?,?)",
+                                   ((block_hash, txid) for txid in set(spent_txids)))
+        if height > START_HEIGHT - 11:
+            enqueue_block(str(header["prev_hash"]), height - 1, "missing parent")
+        recheck_descendants(block_hash)
+        if legacy_ok is not None and long_ok is not None and legacy_ok != long_ok:
             log(f"RULE SPLIT observed at height {height}: {block_hash} — {note}")
         else:
             log(f"stored peer block height={height} hash={block_hash[:16]}… bytes={len(payload)} peer={peer}")
@@ -640,6 +736,19 @@ class PeerWorker(threading.Thread):
 
     def session(self) -> None:
         pending: tuple[str, int | None, str] | None = None
+        try:
+            self._session()
+        finally:
+            pending = getattr(self, "pending_request", None)
+            if pending:
+                with queue_lock:
+                    queued_hashes.discard(pending[0])
+                download_queue.task_done()
+                self.pending_request = None
+
+    def _session(self) -> None:
+        pending = None
+        requested_at = 0.0
         with socket.create_connection((self.ip, self.port), timeout=8) as sock:
             sock.settimeout(2)
             sock.sendall(make_message("version", version_payload()))
@@ -648,7 +757,11 @@ class PeerWorker(threading.Thread):
                 if handshaken and pending is None:
                     pending = self.next_request()
                     if pending:
+                        self.pending_request = pending
+                        requested_at = time.monotonic()
                         request_block(sock, pending[0])
+                if pending and time.monotonic() - requested_at > 30:
+                    raise TimeoutError("peer block response timed out")
                 try:
                     command, payload = recv_message(sock)
                 except socket.timeout:
@@ -673,7 +786,6 @@ class PeerWorker(threading.Thread):
                     sock.sendall(make_message("verack"))
                 elif command == "verack":
                     handshaken = True
-                    sock.sendall(make_message("sendheaders"))
                     sock.sendall(make_message("getaddr"))
                 elif command == "ping":
                     sock.sendall(make_message("pong", payload))
@@ -694,11 +806,13 @@ class PeerWorker(threading.Thread):
                     store_block(pending[0], pending[1], self.address, payload)
                     download_queue.task_done()
                     pending = None
+                    self.pending_request = None
                 elif command == "notfound" and pending is not None:
                     with queue_lock:
                         queued_hashes.discard(pending[0])
                     download_queue.task_done()
                     pending = None
+                    self.pending_request = None
 
 
 def start_peer(ip: str, port: int = P2P_PORT, services: int = 0) -> bool:
@@ -734,7 +848,7 @@ def bootstrap_backfill() -> None:
             with db() as connection:
                 connection.execute("INSERT OR REPLACE INTO meta(key, value) VALUES('guide_tip', ?)", (str(tip),))
                 connection.execute("INSERT OR REPLACE INTO meta(key, value) VALUES('guide_tip_time', ?)", (str(int(time.time())),))
-            start = ACTIVATION_HEIGHT
+            start = START_HEIGHT - 11
             for height in range(start, tip + 1):
                 if stop_event.is_set():
                     return
@@ -744,8 +858,13 @@ def bootstrap_backfill() -> None:
                     continue
                 block_hash = fetch_text(f"https://mempool.guide/api/block-height/{height}")
                 enqueue_block(block_hash, height, "mempool.guide index")
-                time.sleep(0.05)
-            time.sleep(15)
+                stop_event.wait(0.05)
+            with peer_workers_lock:
+                need_peers = len(peer_workers) < MAX_PEERS
+            if need_peers:
+                for address in discover_peers():
+                    start_peer(address)
+            stop_event.wait(15)
         except (OSError, ValueError, urllib.error.URLError) as error:
             log(f"mempool.guide indexing error: {error}")
             stop_event.wait(30)
@@ -766,7 +885,7 @@ def discover_peers() -> list[str]:
     return addresses[:MAX_PEERS]
 
 
-def branch_data(connection: sqlite3.Connection) -> dict[str, Any]:
+def branch_data(connection: sqlite3.Connection, history: bool = False) -> dict[str, Any]:
     rows = connection.execute(
         """
         SELECT hash, prev_hash, height, timestamp, received_at, peer, size,
@@ -774,12 +893,31 @@ def branch_data(connection: sqlite3.Connection) -> dict[str, Any]:
         FROM blocks
         WHERE height >= ?
         ORDER BY height DESC, received_at DESC
-        LIMIT 240
+        LIMIT ?
         """,
-        (ACTIVATION_HEIGHT,),
+        (START_HEIGHT, 12000 if history else 1200),
     ).fetchall()
     blocks = [dict(row) for row in rows]
     hashes = {row["hash"] for row in blocks}
+    # Preserve known conflicts before the recent rendering window. Otherwise a
+    # descendant would incorrectly turn green as its rejecting ancestor ages out.
+    for block in blocks:
+        if block["prev_hash"] in hashes:
+            continue
+        inherited = connection.execute("""
+            WITH RECURSIVE ancestors AS (
+                SELECT hash,prev_hash,height,legacy_maturity_ok,long_maturity_ok
+                FROM blocks WHERE hash=?
+                UNION ALL
+                SELECT b.hash,b.prev_hash,b.height,b.legacy_maturity_ok,b.long_maturity_ok
+                FROM blocks b JOIN ancestors a ON b.hash=a.prev_hash
+                WHERE b.height=a.height-1
+            ) SELECT MIN(legacy_maturity_ok),MIN(long_maturity_ok),
+                     SUM(legacy_maturity_ok IS NULL),SUM(long_maturity_ok IS NULL)
+              FROM ancestors
+        """, (block["prev_hash"],)).fetchone()
+        block["prefix_legacy_ok"] = (False if inherited[0] == 0 else None if inherited[2] else True)
+        block["prefix_long_ok"] = (False if inherited[1] == 0 else None if inherited[3] else True)
     parents = {row["prev_hash"] for row in blocks}
     tips = [row for row in blocks if row["hash"] not in parents]
     children: dict[str, list[str]] = defaultdict(list)
@@ -812,6 +950,7 @@ def status_payload() -> dict[str, Any]:
             FROM blocks
             """
         ).fetchone()
+        fork_count = connection.execute("SELECT COUNT(*) FROM (SELECT prev_hash FROM blocks WHERE height>=? GROUP BY prev_hash HAVING COUNT(*)>1)", (START_HEIGHT,)).fetchone()[0]
         announcements = connection.execute("SELECT COUNT(*) AS count FROM announcements").fetchone()["count"]
         meta = {row["key"]: row["value"] for row in connection.execute("SELECT key, value FROM meta")}
         branches = branch_data(connection)
@@ -825,6 +964,10 @@ def status_payload() -> dict[str, Any]:
             "started": int(PROCESS_STARTED),
             "activation_height": ACTIVATION_HEIGHT,
             "release_height": RELEASE_HEIGHT,
+            "start_height": START_HEIGHT,
+            "coinbase_expiry_time": RDTS_EXPIRY,
+            "rule_name": "180-day rolling coinbase maturity",
+            "partial_validation": True,
             "legacy_maturity": LEGACY_MATURITY,
             "long_maturity": LONG_MATURITY,
             "guide_tip": int(meta.get("guide_tip", 0)),
@@ -835,6 +978,7 @@ def status_payload() -> dict[str, Any]:
             "bytes": int(counts["bytes"] or 0),
             "max_height": int(counts["max_height"] or 0),
             "rule_splits": int(counts["rule_splits"] or 0),
+            "recorded_splits": int(fork_count),
             "announcements": int(announcements or 0),
             "connected_peers": len(connected_peers),
             "new_rule_peers": sum(1 for peer in connected_peers if peer["rule_set"] == "new"),
@@ -852,6 +996,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def log_message(self, format_string: str, *args: Any) -> None:
         return
+
+    def end_headers(self) -> None:
+        # The immutable static frontend can consume this public live API without
+        # moving its custom domain or sharing any credentials.
+        origin = self.headers.get("Origin", "")
+        if self.path.startswith("/api/") and origin in {
+            "https://lukecoin.zndtoshi.com",
+            "https://knots-fork-observer-archive.onrender.com",
+        }:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+        super().end_headers()
 
     def do_GET(self) -> None:
         if self.path == "/api/status":
@@ -878,6 +1034,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
+        if self.path == "/api/history":
+            if ARCHIVE_MODE:
+                payload = (STATIC_DIR / "snapshot.json").read_bytes()
+            else:
+                result = status_payload()
+                with db() as connection:
+                    result["chain"] = branch_data(connection, history=True)
+                payload = json.dumps(result, separators=(",", ":")).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if self.path == "/":
+            self.path = "/index.html"
         super().do_GET()
 
 
