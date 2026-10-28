@@ -105,6 +105,8 @@
     .rule-banner { display:flex; flex-wrap:wrap; gap:22px 40px; padding:19px 22px; margin:22px 0 14px; border:1px solid #35624b; border-radius:14px; background:#10271d; }
     .rule-banner b { font-size:1rem; } .rule-banner small { color:var(--muted); font-weight:400; }
     .rule-banner p { width:100%; margin:0; padding-top:12px; border-top:1px solid var(--line); color:var(--green); font-size:.9rem; }
+    .activation-estimate { display:block; margin-top:7px; color:var(--muted); font-size:.84rem; line-height:1.5; }
+    .activation-estimate[hidden] { display:none; }
     .observation-note { margin:0; padding:0 18px 18px; color:var(--muted); font-size:.78rem; }
     .historical { margin-top:112px; padding-top:48px; border-top:2px solid #526d60; }
     .historic-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
@@ -141,7 +143,7 @@
       <div><span class="label">ACTIVATION</span><b>Block 979,919</b></div>
       <div><span class="label">REWARD MATURITY</span><b>25,920 blocks <small>≈ 180 days</small></b></div>
       <div><span class="label">NEW REWARDS COVERED UNTIL</span><b>1 September 2027 <small>parent MTP</small></b></div>
-      <p id="activation-status" role="status">Waiting for a current chain observation…</p>
+      <p role="status"><span id="activation-status">Waiting for a current chain observation…</span><span id="activation-estimate" class="activation-estimate" hidden></span></p>
     </section>
     <section class="stats" aria-label="Observer summary">
       <article class="card"><span class="label">Observed tip</span><span class="value" id="tip">—</span><span class="detail" id="guide-tip">Index tip —</span></article>
@@ -658,6 +660,31 @@
     $("history-close").addEventListener("click", closeHistory);
     $("history-close-right").addEventListener("click", closeHistory);
 
+    function activationEstimate(data, tip, now = Date.now()) {
+      const remaining = 979919 - tip;
+      if (!tip || remaining <= 0) return null;
+      const blocks = data.chain.blocks || [];
+      const byHash = new Map(blocks.map(block => [block.hash, block]));
+      let newest = blocks.reduce((best, block) => !best || block.height > best.height ? block : best, null);
+      let oldest = newest;
+      let intervals = 0;
+      // Follow one observed branch; sibling blocks must not distort its pace.
+      while (oldest && intervals < 144) {
+        const parent = byHash.get(oldest.prev_hash);
+        if (!parent || parent.height !== oldest.height - 1) break;
+        oldest = parent;
+        intervals++;
+      }
+      const seconds = intervals ? (newest.timestamp - oldest.timestamp) / intervals : 0;
+      const recent = newest && newest.height >= tip - 2 && intervals >= 24
+        && seconds > 0 && Number.isFinite(seconds)
+        && newest.timestamp * 1000 <= now + 2 * 60 * 60 * 1000;
+      return recent
+        ? { time: (newest.timestamp + (979919 - newest.height) * seconds) * 1000,
+            basis: `recent ${intervals} block intervals` }
+        : { time: now + remaining * 600000, basis: '10-minute average block interval' };
+    }
+
     let loading = false;
     async function loadLive() {
       if (loading || document.hidden || historyMode) return;
@@ -682,9 +709,17 @@
         $('activation-status').textContent = !tip ? 'Waiting for the first chain observation…' : remaining
           ? `${remaining.toLocaleString()} blocks to activation · observing the approach now`
           : 'Activation height reached · watching for competing descendants and early reward spends';
+        const estimate = activationEstimate(data, tip);
+        $('activation-estimate').hidden = !estimate;
+        if (estimate) {
+          const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+          const timezone = formatter.resolvedOptions().timeZone;
+          $('activation-estimate').textContent = `Estimated activation: ${formatter.format(new Date(estimate.time))} (${timezone}, your local time) · based on ${estimate.basis}; timing may change.`;
+        }
         latestData = data;
         renderChain(data);
       } catch (error) {
+        $('activation-estimate').hidden = true;
         $('live-label').textContent = 'Live feed unavailable';
         $('chain-meta').textContent = latestData ? 'Connection lost · last received graph retained' : 'Waiting for the live observer';
         $('activation-status').textContent = 'No current live observation. The frozen September archive below remains available.';

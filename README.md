@@ -7,6 +7,11 @@ Source: <https://github.com/zndtoshi/ForkMonitor>
 
 The primary graph watches the approach to block **979,919**, then competing
 BLAKE2b descendants under Knots 29.4.3's **25,920-block** reward maturity rule.
+The activation estimate uses up to 144 consecutive observed block intervals,
+falling back to ten minutes per block while the observer catches up. Each
+visitor sees the estimate in their browser’s local timezone; it is not a
+guaranteed activation time.
+
 Coverage ends for new rewards when their mining block's **parent median time
 past** reaches **1 September 2027, 00:00 UTC**. Rewards covered before that
 cutoff must still complete their full wait afterward. Earlier historical
