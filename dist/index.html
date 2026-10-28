@@ -134,7 +134,7 @@
     <header>
       <div>
         <span class="eyebrow">BLAKE2b · FORKMONITOR</span><h1>180-day coinbase maturity</h1>
-        <p class="subtitle">Live fork watch for the new 25,920-block reward lock. Activates at block 979,919; earlier recorded history is preserved below.</p>
+        <p class="subtitle">Live chain-split monitor.</p>
       </div>
       <div class="live"><span class="live-dot"></span><span id="live-label">Connecting to observer</span></div>
     </header>
@@ -168,22 +168,22 @@
         <button class="graph-button history-exit" id="history-close-right" type="button" hidden>Back to present</button>
       </div>
       <div class="legend"><span class="key"><i class="swatch"></i>new rule · 25,920-block coinbase maturity</span><span class="key"><i class="swatch old"></i>observed conflict with the new rule</span><span class="key"><i class="swatch pending"></i>check pending: missing ancestry</span></div>
-      <p class="observation-note">Peer-observed branches and sampled maturity checks. A branch split is not automatically a rule-caused fork; this observer does not validate proof of work or scripts.</p>
+      <p class="observation-note">Passive observations · splits are not independently validated.</p>
     </section>
 
     <section class="historical" aria-labelledby="historic-title">
       <div class="historic-heading"><div><span class="eyebrow">HISTORICAL ARCHIVE · FROZEN</span>
         <h2 id="historic-title">45-day coinbase-maturity fork<br><span>21–22 September 2026</span></h2>
-        <p>Introduced 21 September at block 973,440: a 6,480-block reward lock instead of 100 blocks. Captured through 22 September; this snapshot never updates.</p>
+        <p>6,480-block reward lock · activated at block 973,440.</p>
       </div><a href="./archive.html" class="graph-button">Open full archive ↗</a></div>
       <div class="historic-facts"><div class="split-trophy"><strong id="historic-splits">8</strong><div><b>RECORDED CHAIN SPLITS</b><span>22 September 2026</span></div></div>
         <div class="historic-count"><b>9</b><span>Maturity-rule<br>disagreement blocks</span></div>
         <div class="historic-count"><b>201</b><span>Observed blocks<br>preserved unchanged</span></div>
       </div>
       <iframe src="./archive.html?embed=1&amp;v=compact-archive" title="Frozen chain graph from 21–22 September 2026" loading="lazy"></iframe>
-      <p class="observation-note">Frozen 22 September 2026, 18:24:47 GST (UTC+4). Eight branch points were observed; this is not a claim of eight independently validated consensus splits.</p>
+      <p class="observation-note">Frozen 22 September 2026 · 18:24 GST.</p>
     </section>
-    <footer>Independent passive observation · <a href="https://github.com/zndtoshi/ForkMonitor">Source code</a> · <a href="./snapshot.json">Original September data</a> · <a href="https://github.com/bitcoinknots/bitcoin/blob/v29.4.3.knots20260508/doc/release-notes.md#attack-mitigation">New rule source</a></footer>
+    <footer><a href="https://github.com/zndtoshi/ForkMonitor">Source code</a> · <a href="./snapshot.json">Original September data</a> · <a href="https://github.com/bitcoinknots/bitcoin/blob/v29.4.3.knots20260508/doc/release-notes.md#attack-mitigation">New rule source</a></footer>
   </main>
 
   <script>
@@ -707,14 +707,15 @@
         $('branches').classList.toggle('warn', data.counts.recorded_splits > 0);
         const remaining = Math.max(0, 979919 - tip);
         $('activation-status').textContent = !tip ? 'Waiting for the first chain observation…' : remaining
-          ? `${remaining.toLocaleString()} blocks to activation · observing the approach now`
-          : 'Activation height reached · watching for competing descendants and early reward spends';
+          ? `${remaining.toLocaleString()} blocks to activation`
+          : 'Rule active · watching for splits';
         const estimate = activationEstimate(data, tip);
         $('activation-estimate').hidden = !estimate;
         if (estimate) {
           const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
           const timezone = formatter.resolvedOptions().timeZone;
-          $('activation-estimate').textContent = `Estimated activation: ${formatter.format(new Date(estimate.time))} (${timezone}, your local time) · based on ${estimate.basis}; timing may change.`;
+          $('activation-estimate').title = `Based on ${estimate.basis}; timing may change.`;
+          $('activation-estimate').textContent = `Est. activation: ${formatter.format(new Date(estimate.time))} · ${timezone}`;
         }
         latestData = data;
         renderChain(data);
