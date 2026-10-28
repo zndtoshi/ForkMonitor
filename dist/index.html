@@ -102,9 +102,13 @@
     @media (max-width: 650px) { .shell { padding: 16px; } header { display: block; } .live { margin-top: 14px; } .stats { grid-template-columns: repeat(2,1fr); } .card:last-child { grid-column: 1 / -1; } #chain.history-mode #chain-canvas { width: 100%; } .history-exit { display: none !important; } .event { grid-template-columns: 70px 1fr; } .event .status { grid-column: 2; text-align: left; } }
 
     .eyebrow { display:block; color:var(--green); font-size:.72rem; font-weight:800; letter-spacing:.15em; margin:0 0 12px; }
-    .rule-banner { display:flex; flex-wrap:wrap; gap:22px 40px; padding:19px 22px; margin:22px 0 14px; border:1px solid #35624b; border-radius:14px; background:#10271d; }
+    .rule-banner { margin:22px 0 14px; border:1px solid #35624b; border-radius:14px; background:#10271d; overflow:hidden; }
+    .rule-details { display:flex; align-items:center; flex-wrap:wrap; gap:18px 32px; padding:18px 22px; }
     .rule-banner b { font-size:1rem; } .rule-banner small { color:var(--muted); font-weight:400; }
-    .rule-banner p { width:100%; margin:0; padding-top:12px; border-top:1px solid var(--line); color:var(--green); font-size:.9rem; }
+    .rule-banner p { margin:0 0 0 auto; color:var(--green); font-size:.9rem; }
+    .rule-banner .stats { margin:0; border:0; border-top:1px solid var(--line); border-radius:0; background:transparent; box-shadow:none; grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .rule-banner .stats .card { padding:12px 18px; }
+    @media(max-width:850px) { .rule-banner p { flex-basis:100%; margin:0; } .rule-banner .stats { grid-template-columns:repeat(2,minmax(0,1fr)); } .rule-banner .stats .card:last-child { grid-column:auto; } }
     .activation-estimate { display:block; margin-top:7px; color:var(--muted); font-size:.84rem; line-height:1.5; }
     .activation-estimate[hidden] { display:none; }
     .observation-note { margin:0; padding:0 18px 18px; color:var(--muted); font-size:.78rem; }
@@ -126,7 +130,7 @@
     .historical iframe { width:100%; height:560px; border:0; display:block; }
     footer { padding:24px 0 8px; color:var(--muted); font-size:.8rem; } footer a { color:#bfd9c9; }
     .swatch.pending { background:#758aab; }
-    @media(max-width:650px) { .rule-banner { gap:18px; } .historic-heading { display:block; } .historic-facts { flex-wrap:wrap; gap:20px; padding:16px; } .split-trophy { flex-basis:100%; } .split-trophy strong { font-size:44px; } .historic-count { padding-left:12px; } .historical { margin-top:72px; padding-top:32px; } .historical iframe { height:600px; } }
+    @media(max-width:650px) { .rule-details { gap:18px; padding:16px; } .historic-heading { display:block; } .historic-facts { flex-wrap:wrap; gap:20px; padding:16px; } .split-trophy { flex-basis:100%; } .split-trophy strong { font-size:44px; } .historic-count { padding-left:12px; } .historical { margin-top:72px; padding-top:32px; } .historical iframe { height:600px; } }
   </style>
 </head>
 <body>
@@ -139,17 +143,19 @@
       <div class="live"><span class="live-dot"></span><span id="live-label">Connecting to observer</span></div>
     </header>
 
-    <section class="rule-banner" aria-label="New rule activation">
+    <section class="rule-banner" aria-label="Rule and observer summary">
+      <div class="rule-details">
       <div><span class="label">ACTIVATION</span><b>Block 979,919</b></div>
       <div><span class="label">REWARD MATURITY</span><b>25,920 blocks <small>≈ 180 days</small></b></div>
-      <div><span class="label">NEW REWARDS COVERED UNTIL</span><b>1 September 2027 <small>parent MTP</small></b></div>
+      <div><span class="label">COVERAGE ENDS</span><b>1 September 2027 <small>parent MTP</small></b></div>
       <p role="status"><span id="activation-status">Waiting for a current chain observation…</span><span id="activation-estimate" class="activation-estimate" hidden></span></p>
-    </section>
-    <section class="stats" aria-label="Observer summary">
+      </div>
+      <div class="stats" aria-label="Observer summary">
       <article class="card"><span class="label">Observed tip</span><span class="value" id="tip">—</span><span class="detail" id="guide-tip">Index tip —</span></article>
       <article class="card"><span class="label">Connected peers</span><span class="value" id="peers">0</span><span class="detail">BLAKE2b peers only</span></article>
       <article class="card"><span class="label">Captured blocks</span><span class="value" id="blocks">0</span><span class="detail" id="bytes">0 B captured</span></article>
       <article class="card"><span class="label">Recorded splits</span><span class="value" id="branches">0</span><span class="detail">Competing descendants retained</span></article>
+      </div>
     </section>
 
     <section class="panel">
@@ -175,7 +181,7 @@
       <div class="historic-heading"><div><span class="eyebrow">HISTORICAL ARCHIVE · FROZEN</span>
         <h2 id="historic-title">45-day coinbase-maturity fork<br><span>21–22 September 2026</span></h2>
         <p>6,480-block reward lock · activated at block 973,440.</p>
-      </div><a href="./archive.html" class="graph-button">Open full archive ↗</a></div>
+      </div></div>
       <div class="historic-facts"><div class="split-trophy"><strong id="historic-splits">8</strong><div><b>RECORDED CHAIN SPLITS</b><span>22 September 2026</span></div></div>
         <div class="historic-count"><b>9</b><span>Maturity-rule<br>disagreement blocks</span></div>
         <div class="historic-count"><b>201</b><span>Observed blocks<br>preserved unchanged</span></div>
