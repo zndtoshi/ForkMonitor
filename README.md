@@ -17,7 +17,7 @@ headers for timestamp context. It does not load September's frozen data into
 its live database. Live state uses `/var/data/knots-fork-observer-180d`; the
 original state directory and archived JSON are preserved.
 
-It connects to at most four BLAKE2b-capable peers. Block discovery follows P2P
+It connects to at most eight BLAKE2b-capable peers. Block discovery follows P2P
 inventory announcements; mempool.guide supplies height-to-hash backfill hints,
 while raw block payloads come from peers. Late parent downloads recheck stored
 descendants. Coinbase checks use branch ancestry and the mining-parent median
@@ -58,7 +58,7 @@ service or automatically resume paid compute. Configure the existing service:
 
 - `OBSERVER_ARCHIVE_MODE=0`
 - `OBSERVER_STATE_DIR=/var/data/knots-fork-observer-180d`
-- `OBSERVER_MAX_PEERS=4`
+- `OBSERVER_MAX_PEERS=8`
 - Dockerfile at repository root; health path `/api/health`.
 
 The Dockerfile retains archive mode as the safe default. Enabling live mode is

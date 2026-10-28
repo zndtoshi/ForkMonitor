@@ -18,4 +18,4 @@ services:
       - key: OBSERVER_STATE_DIR
         value: /var/data/knots-fork-observer-180d
       - key: OBSERVER_MAX_PEERS
-        value: "4"
+        value: "8"

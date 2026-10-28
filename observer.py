@@ -62,7 +62,7 @@ RDTS_EXPIRY = 1_819_756_800  # 2027-09-01 00:00 UTC
 LEGACY_MATURITY = 100
 LONG_MATURITY = 25_920
 NEW_RULE_KNOTS_VERSION = (29, 4, 3)
-MAX_PEERS = max(1, min(8, int(os.environ.get("OBSERVER_MAX_PEERS", "4"))))
+MAX_PEERS = max(1, min(8, int(os.environ.get("OBSERVER_MAX_PEERS", "8"))))
 ARCHIVE_MODE = os.environ.get("OBSERVER_ARCHIVE_MODE", "1").strip().lower() not in {
     "0",
     "false",

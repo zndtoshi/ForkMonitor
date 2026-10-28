@@ -169,17 +169,6 @@
       <p class="observation-note">Peer-observed branches and sampled maturity checks. A branch split is not automatically a rule-caused fork; this observer does not validate proof of work or scripts.</p>
     </section>
 
-    <section class="lower">
-      <article class="panel">
-        <div class="panel-head"><h2>Live peers</h2><span class="panel-meta peer-summary" id="peer-meta">0 connected</span></div>
-        <div class="peer-list" id="peer-list"><div class="empty" style="min-height:140px">Waiting for peer connections…</div></div>
-      </article>
-      <article class="panel">
-        <div class="panel-head"><h2>Captured blocks</h2><span class="panel-meta">Newest first</span></div>
-        <div class="events" id="events"><div class="empty" style="min-height:140px">Connecting to live observer…</div></div>
-      </article>
-    </section>
-
     <section class="historical" aria-labelledby="historic-title">
       <div class="historic-heading"><div><span class="eyebrow">HISTORICAL ARCHIVE · FROZEN</span>
         <h2 id="historic-title">45-day coinbase-maturity fork<br><span>21–22 September 2026</span></h2>
@@ -638,32 +627,6 @@
       $("chain-meta").textContent = `${visible.length} recent blocks · ${data.chain.tips.length} observed tip${data.chain.tips.length === 1 ? '' : 's'}`;
     }
 
-    function renderPeers(data) {
-      const peers = data.peers || [];
-      $("peer-meta").innerHTML = `
-        <span>${data.counts.connected_peers} connected</span>
-        <span class="rule-count"><i class="peer-rule new"></i>${data.counts.new_rule_peers || 0} ≥29.4.3</span>
-        <span class="rule-count"><i class="peer-rule legacy"></i>${data.counts.legacy_rule_peers || 0} older</span>`;
-      $("peer-list").innerHTML = peers.length ? peers.map(peer => `
-        <div class="peer">
-          <i class="peer-state on" title="Connected peer"></i>
-          <span class="peer-address" title="${escapeHtml(peer.address)}">${escapeHtml(peer.address)}</span>
-          <span class="peer-version">
-            <i class="peer-rule ${['new','legacy'].includes(peer.rule_set) ? peer.rule_set : 'unknown'}"></i>
-            <span class="peer-agent" title="${escapeHtml(peer.user_agent || '')}">${escapeHtml(peer.user_agent || 'version unknown')}</span>
-          </span>
-        </div>`).join("") : `<div class="empty" style="min-height:140px">No peers discovered yet.</div>`;
-    }
-
-    function renderEvents(data) {
-      const blocks = (data.chain.blocks || []).slice(0, 30);
-      $("events").innerHTML = blocks.length ? blocks.map(block => {
-        const pending = block.effective_legacy_maturity_ok == null || block.effective_long_maturity_ok == null;
-        const split = block.effective_legacy_maturity_ok === false || block.effective_long_maturity_ok === false;
-        return `<div class="event"><span>#${block.height}</span><span class="hash" title="${block.hash}">${shortHash(block.hash)}</span><span class="status ${split ? 'split' : 'same'}">${split ? (block.inherited_long_maturity_rejection ? 'INHERITED' : 'RULE CONFLICT') : pending ? 'PENDING' : 'no conflict'}</span></div>`;
-      }).join("") : `<div class="empty" style="min-height:140px">No blocks stored yet.</div>`;
-    }
-
     $("history-open").addEventListener("click", async () => {
       if (!latestData) return;
       try {
@@ -721,7 +684,6 @@
           : 'Activation height reached · watching for competing descendants and early reward spends';
         latestData = data;
         renderChain(data);
-        renderPeers(data); renderEvents(data);
       } catch (error) {
         $('live-label').textContent = 'Live feed unavailable';
         $('chain-meta').textContent = latestData ? 'Connection lost · last received graph retained' : 'Waiting for the live observer';
