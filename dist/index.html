@@ -144,6 +144,7 @@
     .historic-count b { display:block; color:#f7dfaa; font-size:1.7rem; line-height:1.2; }
     .historic-count span { color:#c6c5b5; font-size:.8rem; }
     .historical iframe { width:100%; height:560px; border:0; display:block; }
+    .rule-source { margin:16px 18px 0; color:var(--muted); font-size:.8rem; } .rule-source a { color:#bfd9c9; }
     footer { padding:24px 0 8px; color:var(--muted); font-size:.8rem; } footer a { color:#bfd9c9; }
     .swatch.pending { background:#758aab; }
     @media(max-width:650px) { .rule-details { gap:18px; padding:16px; } .historic-heading { display:block; } .historic-facts { flex-wrap:wrap; gap:20px; padding:16px; } .split-trophy { flex-basis:100%; } .split-trophy strong { font-size:44px; } .historic-count { padding-left:12px; } .historical { margin-top:72px; padding-top:32px; } .historical iframe { height:600px; } }
@@ -193,6 +194,8 @@
       <p class="observation-note">Passive observations · splits are not independently validated.</p>
     </section>
 
+    <p class="rule-source"><a href="https://github.com/bitcoinknots/bitcoin/blob/v29.4.3.knots20260508/doc/release-notes.md#attack-mitigation">New rule source · 180-day maturity (Knots 29.4.3)</a></p>
+
     <section class="historical" aria-labelledby="historic-title">
       <div class="historic-heading"><div><span class="eyebrow">HISTORICAL ARCHIVE · FROZEN</span>
         <h2 id="historic-title">45-day coinbase-maturity fork<br><span>21–22 September 2026</span></h2>
@@ -204,8 +207,9 @@
       </div>
       <iframe src="./archive.html?embed=1&amp;v=3d-blocks" title="Frozen chain graph from 21–22 September 2026" loading="lazy"></iframe>
       <p class="observation-note">Frozen 22 September 2026 · 18:24 GST.</p>
+      <p class="rule-source"><a href="https://github.com/bitcoinknots/bitcoin/blob/v29.4.2.knots20260508/doc/release-notes.md#attack-mitigation">New rule source · 45-day maturity (Knots 29.4.2)</a></p>
     </section>
-    <footer><a href="https://github.com/zndtoshi/ForkMonitor">Source code</a> · <a href="./snapshot.json">Original September data</a> · <a href="https://github.com/bitcoinknots/bitcoin/blob/v29.4.3.knots20260508/doc/release-notes.md#attack-mitigation">New rule source</a></footer>
+    <footer><a href="https://github.com/zndtoshi/ForkMonitor">Source code</a> · <a href="./snapshot.json">Original September data</a></footer>
   </main>
 
   <script>
